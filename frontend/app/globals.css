@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f8fafc; /* slate-50 */
+  --foreground: #0f172a; /* slate-900 */
+  --surface: #ffffff;
+  --surface-elevated: #f1f5f9; /* slate-100 */
+  --border: #e2e8f0; /* slate-200 */
+  --muted: #f8fafc;
+  --muted-foreground: #64748b; /* slate-500 */
+  --accent: #0f172a; /* slate-900 */
+  --accent-foreground: #ffffff;
+
+  --inflow: #15803d; /* emerald-700 */
+  --inflow-subtle: #f0fdf4; /* emerald-50 */
+  --risk: #b91c1c; /* red-700 */
+  --risk-subtle: #fef2f2; /* red-50 */
+}
+
+.dark {
+  --background: #090d16;
+  --foreground: #f8fafc;
+  --surface: #0f172a; /* slate-900 */
+  --surface-elevated: #1e293b; /* slate-800 */
+  --border: #334155; /* slate-700 */
+  --muted: #0f172a;
+  --muted-foreground: #94a3b8; /* slate-400 */
+  --accent: #f8fafc;
+  --accent-foreground: #0f172a;
+
+  --inflow: #22c55e;
+  --inflow-subtle: #052e16;
+  --risk: #ef4444;
+  --risk-subtle: #450a0a;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Print Stylesheet for Report PDF Generation */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt;
+  }
+
+  header, nav, aside, .no-print, button, input {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-container {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .page-break {
+    page-break-before: always;
+  }
+}

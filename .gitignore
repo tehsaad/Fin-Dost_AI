@@ -1,3 +1,28 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local env and secrets
+.env
+.env.*
+!.env.example
+.vercel
+
+# Local databases
+*.db
+*.sqlite3
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
 .sass-cache/
 *.css.map
 *.sass.map
