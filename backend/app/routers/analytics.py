@@ -234,6 +234,23 @@ def copilot(body: CopilotIn, business: Business = Depends(require_feature("copil
     return result
 
 
+@router.get("/public/benchmark", tags=["meta"])
+def public_benchmark():
+    """Synthetic benchmark summary for the public landing page (no user data involved)."""
+    b = run_benchmark()
+    return {
+        "businesses_evaluated": b["businesses_evaluated"],
+        "labelled_shortage_rate_pct": b["labelled_shortage_rate_pct"],
+        "accuracy_pct": b["model"]["accuracy"],
+        "recall_pct": b["model"]["recall"],
+        "precision_pct": b["model"]["precision"],
+        "naive_accuracy_pct": b["naive_baseline"]["accuracy"],
+        "avg_warning_lead_days": b["avg_warning_lead_days"],
+        "recovery_scenarios_evaluated": b["recovery_scenarios_evaluated"],
+        "note": "Measured on synthetic, held-out test businesses - not real-world outcomes.",
+    }
+
+
 @router.get("/impact")
 def impact(business: Business = Depends(require_feature("impact")), db: Session = Depends(get_db)):
     snap, today = context(db, business)

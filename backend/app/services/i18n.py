@@ -5,7 +5,17 @@ translation can never change their meaning.
 """
 from __future__ import annotations
 
+import re
+
 from ..money import fmt_pkr
+
+_LTR_TOKENS = re.compile(r"-?Rs\. [\d,]+(?:\.\d+)?|\d{4}-\d{2}-\d{2}|\d+(?:\.\d+)?%")
+
+
+def isolate_ltr(text: str) -> str:
+    """Wrap amounts, dates and percentages in Unicode LTR isolates so right-to-left
+    Urdu text never reorders them (e.g. '-Rs. 500' stays '-Rs. 500')."""
+    return _LTR_TOKENS.sub(lambda m: "\u2066" + m.group(0) + "\u2069", text)
 
 GLOSSARY = [
     {

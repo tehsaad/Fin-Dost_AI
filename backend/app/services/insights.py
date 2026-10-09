@@ -32,7 +32,7 @@ def health_index(snap: Snapshot, today: date, forecast: dict, period30) -> dict:
     balance = account_balances(snap, today)["total"]
     daily_out = period30.cash_out / 30 if period30.cash_out else 0
     cover_days = balance / daily_out if daily_out else 60
-    comps.append(("Liquidity", 25, _clamp(cover_days / 30 * 100),
+    comps.append(("Liquidity", 25, _clamp(cover_days / 14 * 100),
                   f"Cash covers about {max(cover_days, 0):.0f} days of recent spending"))
 
     s = forecast["summary"]
@@ -57,16 +57,18 @@ def health_index(snap: Snapshot, today: date, forecast: dict, period30) -> dict:
         label = "Savings rate" if snap.kind in ("household", "student") else "Profit margin"
         comps.append((label, 20, _clamp((margin + 10) / 25 * 100), f"{label} {margin:.1f}% over the last 30 days"))
 
-    weekly = []
-    for w in range(8):
-        end = today - timedelta(days=7 * w)
-        ps = period_summary(snap, end - timedelta(days=6), end)
-        weekly.append(ps.cash_in - ps.cash_out)
-    weekly = np.array(weekly, dtype=float)
-    if np.abs(weekly).sum() > 0:
-        cv = float(weekly.std() / (np.abs(weekly.mean()) + 1e-9))
-        sscore = _clamp(100 - (cv - 0.3) / 1.2 * 80) if cv > 0.3 else 100
-        comps.append(("Cash-flow stability", 15, sscore, "Week-to-week swings in net cash over 8 weeks"))
+    # Stability over 28-day blocks, so monthly salaries/allowances don't look like volatility.
+    nets, outs = [], []
+    for blk in range(3):
+        end = today - timedelta(days=28 * blk)
+        ps = period_summary(snap, end - timedelta(days=27), end)
+        nets.append(ps.cash_in - ps.cash_out)
+        outs.append(ps.cash_out)
+    avg_out = float(np.mean(outs))
+    if avg_out > 0 and sum(1 for o in outs if o) >= 2:
+        volatility = float(np.std(nets) / avg_out)
+        comps.append(("Cash-flow stability", 15, _clamp(100 - volatility * 150),
+                      f"Net cash per 4 weeks swings by about {volatility * 100:.0f}% of normal 4-week spending"))
 
     total_w = sum(w for _, w, _, _ in comps)
     score = sum(w * v for _, w, v, _ in comps) / total_w if total_w else 0

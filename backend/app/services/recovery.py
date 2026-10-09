@@ -30,6 +30,17 @@ def _run(base: Components, snap: Snapshot, adjustments: list[dict]) -> dict:
     return project(comp)
 
 
+def _shortage_effect(summary: dict, cmp: dict) -> str:
+    if not summary["shortage_date"]:
+        return ""
+    if cmp["removes_shortage"]:
+        return "; the projected shortage is removed"
+    shift = cmp["shortage_shift_days"]
+    if shift and shift > 0:
+        return f"; the shortage starts {shift} day(s) later"
+    return f"; a shortage still starts on {cmp['scenario_shortage_date']}, but it is smaller"
+
+
 def generate_candidates(snap: Snapshot, today: date, scenario_result: dict, horizon: int) -> list[dict]:
     summary = scenario_result["summary"]
     focus_day = summary["days_to_shortage"] or (date.fromisoformat(summary["min_balance_date"]) - today).days or horizon
@@ -194,8 +205,7 @@ def recommend(snap: Snapshot, today: date, scenario_adjustments: list[dict], hor
         c["numerical_reasoning"] = (
             f"Raises the lowest projected balance by {fmt_pkr(c['comparison']['min_balance_change_paisa'])} "
             f"(from {fmt_pkr(scenario['summary']['min_balance_paisa'])} to {fmt_pkr(c['result']['min_balance_paisa'])})"
-            + (f"; shortage {'removed' if c['comparison']['removes_shortage'] else 'moved'}"
-               if scenario["summary"]["shortage_date"] else "")
+            + _shortage_effect(scenario["summary"], c["comparison"])
         )
     evaluated.sort(key=lambda c: -c["score"])
 

@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 from ..money import fmt_pkr, rupees
 from .forecast import run_forecast
-from .i18n import GLOSSARY, urdu_affordability, urdu_dashboard_summary, urdu_shortage_reason
+from .i18n import GLOSSARY, isolate_ltr, urdu_affordability, urdu_dashboard_summary, urdu_shortage_reason
 from .ledger import account_balances, period_summary, receivables_summary
 from .recovery import recommend
 from .simulation import simulate
@@ -276,9 +276,9 @@ def _reply(intent: str, lang: str, en: str, ur: str, evidence: list[str], data: 
     return {
         "intent": intent,
         "language": lang,
-        "answer": ur if lang == "ur" else en,
+        "answer": isolate_ltr(ur) if lang == "ur" else en,
         "answer_en": en,
-        "answer_ur": ur,
+        "answer_ur": isolate_ltr(ur),
         "evidence": evidence,
         "data": data,
         "links": links or [],

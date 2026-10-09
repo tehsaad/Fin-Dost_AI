@@ -1,0 +1,121 @@
+"use client";
+
+import Link from "next/link";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { KeyRound, Terminal } from "lucide-react";
+import { AuthLayout } from "@/components/auth/auth-layout";
+import { captchaEnabled, Turnstile } from "@/components/auth/turnstile";
+import { GoogleButton, googleEnabled } from "@/components/auth/google-button";
+import { Button } from "@/components/shared/button";
+import { Field, Input, Select } from "@/components/shared/form";
+import { Notice, Spinner } from "@/components/shared/feedback";
+import { authMode, setDevToken } from "@/lib/auth";
+import { getSupabase, supabaseConfigured } from "@/lib/supabase/client";
+import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@/lib/demo-accounts";
+
+function safeNext(n: string | null) {
+  return n && n.startsWith("/") && !n.startsWith("//") ? n : "/dashboard";
+}
+
+function DevLogin({ next }: { next: string }) {
+  const router = useRouter();
+  const [email, setEmail] = useState("sme@demo.findost.app");
+  const [kind, setKind] = useState("sme");
+  const [err, setErr] = useState<string | null>(null);
+  const go = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await fetch("/api/dev-token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, kind }) });
+    if (!res.ok) return setErr("Developer sign-in is disabled.");
+    setDevToken((await res.json()).access_token);
+    router.replace(next);
+  };
+  return (
+    <form onSubmit={go} className="space-y-4 rounded-lg border border-dashed border-amber-400 p-4">
+      <p className="flex items-center gap-2 text-xs font-semibold text-amber-700"><Terminal className="h-4 w-4" /> Local developer sign-in (no Supabase)</p>
+      <Field label="Email" htmlFor="dev-email"><Input id="dev-email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+      <Field label="Account type for new users" htmlFor="dev-kind">
+        <Select id="dev-kind" value={kind} onChange={(e) => setKind(e.target.value)}><option value="sme">SME</option><option value="enterprise">Enterprise</option><option value="household">Household</option><option value="student">Student</option></Select>
+      </Field>
+      {err && <Notice tone="danger">{err}</Notice>}
+      <Button type="submit" className="w-full">Continue</Button>
+    </form>
+  );
+}
+
+function LoginInner() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const next = safeNext(params.get("next"));
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [reset, setReset] = useState(0);
+  const [error, setError] = useState<string | null>(params.get("error"));
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (authMode !== "supabase") return;
+    getSupabase()?.auth.getSession().then(({ data }) => { if (data.session) router.replace(next); });
+  }, [router, next]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (captchaEnabled && !captcha) return setError("Please complete the security check.");
+    const supabase = getSupabase();
+    if (!supabase) return setError("Sign-in is not configured.");
+    setBusy(true);
+    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken: captcha ?? undefined } });
+    setBusy(false);
+    if (err) {
+      setReset((r) => r + 1);
+      setError(err.message === "Invalid login credentials" ? "Email or password is incorrect." : err.message);
+      return;
+    }
+    router.replace(next);
+    router.refresh();
+  };
+
+  return (
+    <AuthLayout title="Welcome back" subtitle="Sign in to your FinDost workspace. Your account type decides which modules you see.">
+      {authMode === "dev" ? <DevLogin next={next} /> : !supabaseConfigured ? (
+        <Notice tone="warning">Authentication is not configured yet (missing Supabase settings).</Notice>
+      ) : (
+        <div className="space-y-5">
+          {googleEnabled && (
+            <>
+              <GoogleButton next={next} onError={setError} />
+              <div className="flex items-center gap-3 text-[11px] uppercase tracking-wider text-slate-400"><span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />or with email<span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" /></div>
+            </>
+          )}
+          <form onSubmit={submit} className="space-y-4" noValidate>
+            <Field label="Email" htmlFor="email"><Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+            <Field label="Password" htmlFor="password"><Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+            <Turnstile onToken={setCaptcha} resetSignal={reset} action="login" />
+            {error && <Notice tone="danger">{error}</Notice>}
+            <Button type="submit" className="w-full" size="lg" disabled={busy}>{busy && <Spinner />}Sign in</Button>
+          </form>
+          <p className="text-center text-sm text-slate-500">New to FinDost? <Link href="/signup" className="font-medium text-brand-700 hover:underline dark:text-brand-400">Create an account</Link></p>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+            <p className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300"><KeyRound className="h-4 w-4 text-brand-600" /> Try a demo account (fictional data)</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {DEMO_ACCOUNTS.map((d) => (
+                <button key={d.email} type="button" onClick={() => { setEmail(d.email); setPassword(DEMO_PASSWORD); }}
+                  className="rounded-md border border-slate-200 bg-white p-2 text-left transition hover:border-brand-400 dark:border-slate-700 dark:bg-slate-950">
+                  <span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">{d.label}</span>
+                  <span className="block text-[10px] text-slate-500">{d.who}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[10px] text-slate-500">Click one to fill the form, complete the security check, then sign in.</p>
+          </div>
+        </div>
+      )}
+    </AuthLayout>
+  );
+}
+
+export default function LoginPage() {
+  return <Suspense><LoginInner /></Suspense>;
+}

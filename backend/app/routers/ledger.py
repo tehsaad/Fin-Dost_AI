@@ -29,6 +29,7 @@ from ..schemas import (
     TransactionUpdate,
 )
 from ..services.categories import EXPENSE_CATEGORIES, INCOME_CATEGORIES, categorize
+from ..services.i18n import isolate_ltr
 from ..services.ingestion import dedupe_key
 from ..services.ledger import account_balances, payable_view, receivable_view
 from .common import context, get_or_create_customer, get_or_create_supplier, owned
@@ -423,6 +424,7 @@ def receivable_reminder(rec_id: str, lang: str = "en", business: Business = Depe
     if lang == "ur":
         text = (f"السلام علیکم {rec.customer_name}، {business.name} کی طرف سے یاد دہانی: آپ کے ذمے {fmt_pkr(rec.outstanding)}{ref} "
                 f"کی ادائیگی {rec.due_on.isoformat()} کو واجب تھی۔ براہ کرم سہولت کے مطابق ادائیگی کر دیں۔ جزاک اللہ۔")
+        text = isolate_ltr(text)
     else:
         overdue = (today - rec.due_on).days
         when = f"was due on {rec.due_on.isoformat()}" if overdue > 0 else f"is due on {rec.due_on.isoformat()}"
