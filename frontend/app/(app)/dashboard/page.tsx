@@ -17,6 +17,7 @@ import { ErrorState, LevelBadge, Notice, PageSkeleton, Spinner, ValueTag } from 
 import { BalanceChart, CategoryBars } from "@/components/charts";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
+import { dashboardPath } from "@/lib/prefetch";
 import { CASH_IN, cn, formatDate, formatPKR, formatScale, KIND_LABEL } from "@/lib/format";
 import type { CopilotAnswer, Dashboard } from "@/lib/types";
 
@@ -25,12 +26,6 @@ const RANGES = [
   { id: "30", label: "30 days" },
   { id: "90", label: "90 days" },
 ];
-
-function shiftDate(iso: string, days: number) {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 function Kpi({ label, value, sub, type, icon: Icon, tone = "neutral", href }: {
   label: string; value: string; sub?: React.ReactNode; type: "actual" | "estimated" | "forecast" | "index";
@@ -64,11 +59,7 @@ export default function DashboardPage() {
   const [explaining, setExplaining] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
 
-  const path = useMemo(() => {
-    const to = new Date();
-    const local = new Date(to.getTime() - to.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-    return `/dashboard?from=${shiftDate(local, -(Number(range) - 1))}&to=${local}`;
-  }, [range]);
+  const path = useMemo(() => dashboardPath(range), [range]);
   const { data, error, loading, reload } = useApi<Dashboard>(path);
 
   const explainUrdu = async () => {

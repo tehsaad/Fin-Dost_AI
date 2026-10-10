@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { TURNSTILE_SRC } from "./turnstile-src";
 
 declare global {
   interface Window {
@@ -13,19 +14,30 @@ declare global {
   }
 }
 
-const SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+const SRC = TURNSTILE_SRC;
 
 function loadScript(): Promise<void> {
   if (window.turnstile) return Promise.resolve();
   if (!window.__turnstileLoading) {
     window.__turnstileLoading = new Promise((resolve, reject) => {
-      const s = document.createElement("script");
-      s.src = SRC;
-      s.async = true;
-      s.defer = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error("Could not load the captcha"));
-      document.head.appendChild(s);
+      // Pages with a captcha start this download in their HTML (CaptchaPreload); reuse that script if present.
+      const existing = document.querySelector<HTMLScriptElement>(`script[src="${SRC}"]`);
+      const s = existing ?? document.createElement("script");
+      const started = Date.now();
+      const ready = () => {
+        if (window.turnstile) return resolve();
+        if (Date.now() - started > 20_000) return reject(new Error("Could not load the captcha"));
+        setTimeout(ready, 50);
+      };
+      s.addEventListener("load", ready);
+      s.addEventListener("error", () => reject(new Error("Could not load the captcha")));
+      if (!existing) {
+        s.src = SRC;
+        s.async = true;
+        document.head.appendChild(s);
+      } else {
+        ready(); // it may already have loaded before this listener was attached
+      }
     });
   }
   return window.__turnstileLoading;
@@ -38,7 +50,6 @@ export function Turnstile({ onToken, resetSignal = 0, action = "auth" }: { onTok
   const cb = useRef(onToken);
   cb.current = onToken;
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
-
   useEffect(() => {
     if (!siteKey) return;
     let cancelled = false;
@@ -74,3 +85,25 @@ export function Turnstile({ onToken, resetSignal = 0, action = "auth" }: { onTok
 }
 
 export const captchaEnabled = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
+
+/**
+ * The latest captcha token for a form. `ready()` lets a form that is submitted before Cloudflare has finished its
+ * check wait a few seconds for the token instead of failing ("complete the security check"). The captcha is still
+ * required: without a token the form shows the same error as before.
+ */
+export function useCaptchaToken() {
+  const [token, setToken] = useState<string | null>(null);
+  const latest = useRef<string | null>(null);
+  const onToken = useCallback((t: string | null) => {
+    latest.current = t;
+    setToken(t);
+  }, []);
+  const ready = useCallback(async (timeoutMs = 20_000): Promise<string | null> => {
+    const started = Date.now();
+    while (captchaEnabled && !latest.current && Date.now() - started < timeoutMs) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return latest.current;
+  }, []);
+  return { token, onToken, ready };
+}

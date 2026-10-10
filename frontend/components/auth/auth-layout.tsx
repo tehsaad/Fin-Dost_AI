@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BackendWarmup } from "@/components/backend-warmup";
 
 export function AuthLayout({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle: string }) {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
+      <BackendWarmup />
       <div className="relative hidden overflow-hidden bg-slate-950 p-10 text-white lg:flex lg:flex-col lg:justify-between">
         <div className="pointer-events-none absolute -left-20 top-10 h-80 w-80 animate-blob rounded-full bg-brand-500/30 blur-3xl" />
         <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 animate-blob rounded-full bg-blue-600/20 blur-3xl [animation-delay:-5s]" />

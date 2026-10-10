@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight, ClipboardCheck, PiggyBank, ShieldCheck, Target } from "lucide-react";
 import { useApp } from "./app-provider";
 import { useApi } from "@/lib/hooks";
+import { WORKFLOW_PANEL_PATHS } from "@/lib/prefetch";
 import { cn, formatPKR } from "@/lib/format";
 
 interface ActionsResp { counts: Record<string, number> }
@@ -30,10 +31,11 @@ function Tile({ href, icon: Icon, title, value, sub, tone = "default" }: {
 /** The finance workflow at a glance: each tile is live data from the API and links to where the work is done. */
 export function WorkflowPanel() {
   const { has } = useApp();
-  const actions = useApi<ActionsResp>(has("actions") ? "/actions" : null);
-  const controls = useApi<ControlsResp>(has("controls") ? "/controls" : null);
-  const budget = useApi<BudgetResp>(has("budget") ? "/budgets" : null);
-  const goals = useApi<GoalsResp>(has("goals") ? "/goals" : null);
+  const path = (f: keyof typeof WORKFLOW_PANEL_PATHS) => (has(f) ? WORKFLOW_PANEL_PATHS[f] ?? null : null);
+  const actions = useApi<ActionsResp>(path("actions"));
+  const controls = useApi<ControlsResp>(path("controls"));
+  const budget = useApi<BudgetResp>(path("budget"));
+  const goals = useApi<GoalsResp>(path("goals"));
 
   const tiles: React.ReactNode[] = [];
   if (actions.data) {

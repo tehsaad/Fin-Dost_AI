@@ -237,3 +237,8 @@ def test_demo_dates_rebase(client, db, monkeypatch):
     after = client.get("/api/v1/forecast", headers=h).json()["summary"]
     assert after["min_balance_paisa"] == before["min_balance_paisa"]
     assert after["days_to_shortage"] == before["days_to_shortage"]
+
+
+def test_warmup_is_public_and_returns_no_data(client):
+    r = client.get("/api/v1/warmup")
+    assert r.status_code == 204 and r.content == b""
