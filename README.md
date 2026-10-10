@@ -37,6 +37,17 @@ the engine already computed and reads receipts into proposals the user must revi
 - **The browser never talks to the database.** Row-level security is enabled on every table with no policies, so
   the anon key cannot read business data; only the backend (direct DB connection) can, scoped to the signed-in owner.
 
+## Account types
+
+* **Enterprise** — financial operations: budget vs actual, data checks, scenarios and recovery, Tasks & Approvals
+  (propose → owner approves → completed), reports, and **Team & Access** for several users per company
+  (owner / finance editor / viewer, enforced on the server).
+* **SME / shop** — digital khata, udhaar, inventory, forecasts, recovery, tasks.
+* **Household / Student** — personal finance: income & expenses, monthly budget, savings goals, personal
+  what-if planner (salary/allowance late or lower), spending adjustment plan.
+
+The Copilot is a floating assistant on every page. SDG impact and the benchmark are on the public home page.
+
 ## Modules
 
 | | Module | What it does |
@@ -75,7 +86,7 @@ cd backend
 python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 DATABASE_URL=sqlite:///./local.db DEV_AUTH_SECRET=local-dev-secret-change-me-0123456789 \
   .venv/bin/uvicorn app.main:app --port 8000
-.venv/bin/python -m pytest          # 88 tests, no network or API keys needed
+.venv/bin/python -m pytest          # 154 tests, no network or API keys needed
 ```
 
 Frontend (Node 20+), developer sign-in without Supabase:

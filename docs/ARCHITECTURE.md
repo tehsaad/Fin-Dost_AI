@@ -32,10 +32,11 @@
 
 ## Data model (Postgres)
 
-`businesses` (one per user; `kind`, opening balances, reserve, `is_demo`, `is_anonymous`, AI consent) →
+`businesses` (one created per user; `kind`, opening balances, reserve, `is_demo`, `is_anonymous`, AI consent) +
+`workspace_members` / `workspace_invitations` (shared enterprise workspaces) →
 `transactions`, `customers`, `suppliers`, `receivables`, `payables`, `products`, `inventory_movements`,
 `financial_scenarios` + `scenario_actions`, `forecast_runs`, `risk_alerts`, `import_batches`, `audit_events`,
-`ai_usage`. Every child row has `business_id … ON DELETE CASCADE`. Money is `BIGINT` paisa.
+`ai_usage`, `budgets`, `savings_goals`, `finance_actions`. Every child row has `business_id … ON DELETE CASCADE`. Money is `BIGINT` paisa.
 
 ## Module boundaries
 
@@ -66,3 +67,32 @@
 
 Every figure comes from the engine. AI off, unavailable, failing or over the daily limit → the rule answer, with
 `ai_fallback` saying why.
+
+## Shared workspaces and roles (`auth.get_access`)
+
+* A request's workspace is the user's own, or one they are an **active member** of, chosen with the
+  `X-Workspace-Id` header. The header is only honoured after a membership check; anything else → 404.
+* Roles: **owner** (all, incl. approvals, team, settings), **editor** (records, imports, reports, propose actions),
+  **viewer** (read and export). Unknown roles have no permissions.
+* Default-deny for read-only roles: any non-GET request is refused unless it is a calculation-only endpoint
+  (simulate, compare, recovery, copilot). Owner-only routes additionally require the `admin` permission; approvals
+  require `approve`.
+* The workspace creator (`businesses.owner_id`) is the permanent owner and is not stored as a member, so a
+  workspace always keeps an owner. Audit events record the acting user.
+
+## Enterprise workflow
+
+Import (CSV/receipt, preview, corrections) → ledger → forecast, budget vs actual, data checks → alerts with
+records → scenarios and recovery options (simulated, ledger untouched) → **Propose as action** (impact re-simulated
+server-side) → submit → owner approves/rejects → a person marks it completed → reports show budget, actions and
+checks. FinDost never moves money; "completed" is what a person recorded.
+
+## Account types
+
+| Kind | Navigation and wording | Modules |
+|---|---|---|
+| enterprise | Financial Overview, Records, Planning, Risk & controls, Operations (Tasks & Approvals, Reports, Team) | all business modules + budget, controls, actions, team |
+| sme | Command Center, Digital Khata, shop wording | business modules + budget, controls, actions |
+| household, student | My Money, Income & Expenses, Monthly Budget, Savings Goals, What-if Planner, Spending Adjustment Plan, Budget Warnings | ledger, bills, import, forecast, alerts, simulator (personal presets: income late/drops), recovery (personal wording), reports, budget, goals |
+
+SDG impact is on the public landing page (`/public/benchmark`), not in any workspace.

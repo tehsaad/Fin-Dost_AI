@@ -2,7 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const APP_PATHS = ["/dashboard", "/transactions", "/import", "/forecast", "/alerts", "/simulator", "/recovery",
-  "/inventory", "/reports", "/copilot", "/impact", "/settings", "/learn", "/onboarding"];
+  "/inventory", "/reports", "/copilot", "/settings", "/learn", "/onboarding", "/budget", "/goals", "/controls", "/actions",
+  "/team", "/invite"];
 
 export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -29,7 +30,7 @@ export async function middleware(request: NextRequest) {
   if (isApp && !signedIn) {
     const to = request.nextUrl.clone();
     to.pathname = "/login";
-    to.search = `?next=${encodeURIComponent(path)}`;
+    to.search = `?next=${encodeURIComponent(path + request.nextUrl.search)}`;  // keeps e.g. an invitation token
     return NextResponse.redirect(to);
   }
   if ((path === "/login" || path === "/signup") && signedIn) {

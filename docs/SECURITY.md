@@ -14,13 +14,26 @@
 
 ## Authorization and isolation
 
-* One workspace per user (`businesses.owner_id` unique). Every query filters by the caller's `business_id`;
+* Each user creates at most one workspace (`businesses.owner_id` unique) and may be a member of others (see
+  below). Every query filters by the resolved workspace's `business_id`;
   `owned()` returns **404** (not 403) for other users' records, so IDs cannot be probed.
 * Tested with separate users on 14 read/write/payment/import/scenario/alert routes, exports, forecasts and the
   audit log (`test_ledger.py`, `test_workflow.py`, `test_demo_security.py`).
 * Account type and module access come from the database row, never from the client.
 * Postgres RLS is enabled on all tables with **no policies**, so the public anon key cannot read or write data
   through Supabase's REST API; only the backend's server-side connection can.
+
+## Shared enterprise workspaces
+
+* Membership-checked workspace selection; outsiders get 404 for another company's workspace id on every route,
+  including exports and audit history (tested).
+* Viewer: read and export only — every mutating request is refused centrally (tested on transactions, budgets,
+  actions, invitations, settings). Editor: no team management, settings, resets or approvals (tested).
+* Removed members lose access on their next request (tested). The creator cannot be removed or demoted.
+* Invitations: 32-byte random token, only its SHA-256 stored, 7-day expiry (410 after), single use (replay → 404),
+  revocable, and accepted only by a signed-in, non-anonymous user whose token email matches the invited address
+  (tested: wrong user, anonymous, guessed token, revoked, expired). If email delivery is not configured the API says
+  so (`email_sent=false`) instead of claiming success.
 
 ## Shared-demo risk (fixed)
 

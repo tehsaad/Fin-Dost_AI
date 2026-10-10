@@ -3,7 +3,10 @@
 export type Kind = "sme" | "student" | "household" | "enterprise";
 export type Feature =
   | "ledger" | "receivables" | "payables" | "inventory" | "import" | "forecast" | "alerts"
-  | "simulator" | "recovery" | "reports" | "copilot" | "impact";
+  | "simulator" | "recovery" | "reports" | "copilot" | "budget" | "goals" | "controls" | "actions" | "team";
+
+export type Role = "owner" | "editor" | "viewer";
+export type Permission = "read" | "export" | "write" | "propose" | "approve" | "admin";
 
 export interface Business {
   id: string;
@@ -29,6 +32,9 @@ export interface Business {
 export interface Me {
   user: { id: string; email: string | null; name: string | null; is_anonymous: boolean };
   business: Business | null;
+  role: Role | null;
+  permissions: Permission[];
+  workspaces: { id: string; name: string; kind: Kind; role: Role }[];
   needs_onboarding: boolean;
   suggested_kind: Kind | null;
   suggested_business_name: string | null;

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CloudRain, Clock, Home, LifeBuoy, Package, Play, Save, Store, Trash2, TrendingDown, X, Zap } from "lucide-react";
 import { PageHeader } from "@/components/app/shell";
+import { termsFor } from "@/lib/terms";
 import { useApp } from "@/components/app/app-provider";
 import { Card } from "@/components/shared/card";
 import { Button } from "@/components/shared/button";
@@ -50,7 +51,7 @@ function useSimulation(adjustments: Adjustment[]) {
 }
 
 export default function SimulatorPage() {
-  const { has } = useApp();
+  const { has, business } = useApp();
   const presets = useApi<Presets>("/scenarios/presets");
   const saved = useApi<{ items: Scenario[] }>("/scenarios");
   const [tab, setTab] = useState<"shock" | "whatif" | "saved">("shock");
@@ -129,7 +130,8 @@ export default function SimulatorPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Shock & what-if simulator" urdu="جھٹکا اور اگر-مگر" description="Stress-test your cash against real-world shocks or try decisions before you make them. Every result is re-calculated by the forecast engine and clearly labelled as a simulation." />
+      <PageHeader title={termsFor(business.kind).simulator} urdu="جھٹکا اور اگر-مگر"
+        description={termsFor(business.kind).simulatorDescription} />
       <Tabs tabs={[{ id: "shock", label: "Financial shocks" }, { id: "whatif", label: "What-if decisions" }, { id: "saved", label: "Saved & compare", count: saved.data?.items.length }]} value={tab} onChange={setTab} />
 
       {tab !== "saved" && (

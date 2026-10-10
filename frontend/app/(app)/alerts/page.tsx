@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowRight, BellOff, Bell, ChevronDown, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/app/shell";
+import { termsFor } from "@/lib/terms";
+import { useApp } from "@/components/app/app-provider";
+import { ProposeAction } from "@/components/app/propose-action";
 import { Card } from "@/components/shared/card";
 import { Button } from "@/components/shared/button";
 import { EmptyState, ErrorState, LevelBadge, Notice, PageSkeleton } from "@/components/shared/feedback";
@@ -95,6 +98,7 @@ function AlertCard({ alert, onAck, defaultOpen }: { alert: Alert; onAck: (id: st
               <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{alert.limitations}</p>
             </div>
           </div>
+          <ProposeAction title={`Follow up: ${alert.title}`} description={alert.next_step} sourceType="alert" sourceRef={`${alert.rule}:${alert.entity_key}`} requiresApproval={false} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11px] text-slate-400">{alert.score_note}{alert.records.length > 0 && ` · based on ${alert.records.length} record${alert.records.length === 1 ? "" : "s"}`}</p>
             <div className="flex gap-2">
@@ -109,6 +113,7 @@ function AlertCard({ alert, onAck, defaultOpen }: { alert: Alert; onAck: (id: st
 }
 
 export default function AlertsPage() {
+  const { business } = useApp();
   const { data, error, reload } = useApi<AlertsResponse>("/alerts");
   const [ackError, setAckError] = useState<string | null>(null);
   const [hash, setHash] = useState("");
@@ -130,7 +135,8 @@ export default function AlertsPage() {
   if (!data) return <PageSkeleton />;
   return (
     <div className="space-y-6">
-      <PageHeader title="Risk & early warnings" urdu="خطرات اور انتباہ" description="Explainable rules over your ledger and forecast, plus statistical checks for unusual amounts. Unusual never means fraudulent — always check the receipt." />
+      <PageHeader title={termsFor(business.kind).alerts} urdu="خطرات اور انتباہ"
+        description={termsFor(business.kind).alertsDescription} />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {(["critical", "high", "medium", "low"] as const).map((l) => (
           <div key={l} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">

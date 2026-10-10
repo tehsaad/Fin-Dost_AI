@@ -12,6 +12,25 @@ node scripts/e2e-journey.cjs                        # browser journey (see heade
 npx lighthouse http://localhost:3001/ --only-categories=seo,accessibility,best-practices,performance
 ```
 
+## Results (enterprise upgrade, branch `feat/enterprise-workflow-upgrade`)
+
+| Check | Result |
+|---|---|
+| Backend pytest | **154 passed** (baseline before the upgrade: 139) |
+| Frontend Vitest | **19 passed** (baseline 14; adds per-account-type navigation and wording tests) |
+| `tsc --noEmit`, ESLint | pass, 0 findings |
+| Production build | pass |
+| `scripts/e2e-enterprise.cjs` (local, SQLite, dev sign-in, no AI/email keys) | **19/19**: enterprise nav and workflow tiles; floating Copilot greeting + records answer + Escape; budget; data checks; recovery → propose → submit → approve → complete; invitation (honest "no email sent"); editor joins with editor rights; student personal nav, URL block, personal scenarios; mobile layout; SDG on landing |
+| `scripts/e2e-journey.cjs` (regression) | 15/15, 0 issues |
+
+New backend tests (`test_enterprise.py`, 15): single-use, recipient-bound invitations; revoked and expired
+invitations; viewer can read/export/simulate but every write is refused; editor works records but cannot
+administer or approve; outsiders get 404 by workspace id on data, export, team and audit routes; removed members
+lose access immediately; creator protected; `/me` lists workspaces; modules per account type (4 kinds); personal
+presets and income delay; budget vs actual + over-budget alert + report; savings goal maths; data checks flag
+without changing records; the 12-step enterprise workflow (import with correction → totals → forecast → evidence →
+simulate → priced action → editor submits → owner approves → completed → report and audit trail agree).
+
 ## Results (pass 2)
 
 | Check | Result |

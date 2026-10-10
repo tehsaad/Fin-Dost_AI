@@ -3,48 +3,23 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import {
-  Activity, AlertTriangle, BookOpen, Boxes, FileBarChart2, FileUp, Globe2, LayoutDashboard, LifeBuoy,
-  LogOut, Menu, MessageSquareText, NotebookPen, Settings, TrendingUp, X, Zap,
-} from "lucide-react";
+import { Activity, LogOut, Menu, Settings, X } from "lucide-react";
 import { useApp } from "./app-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/auth";
 import { cn } from "@/lib/format";
 import type { Feature } from "@/lib/types";
+import { FloatingCopilot } from "@/components/copilot/floating";
 import { Logo } from "@/components/logo";
 
-type NavItem = { href: string; label: string; urdu: string; icon: React.ElementType; feature?: Feature };
+import { navGroups } from "./nav-config";
 
-const GROUPS: { title: string; items: NavItem[] }[] = [
-  { title: "Overview", items: [{ href: "/dashboard", label: "Command Center", urdu: "ڈیش بورڈ", icon: LayoutDashboard }] },
-  {
-    title: "Records",
-    items: [
-      { href: "/transactions", label: "Digital Khata", urdu: "کھاتہ", icon: NotebookPen, feature: "ledger" },
-      { href: "/import", label: "Import CSV", urdu: "ڈیٹا شامل کریں", icon: FileUp, feature: "import" },
-      { href: "/inventory", label: "Inventory", urdu: "اسٹاک", icon: Boxes, feature: "inventory" },
-    ],
-  },
-  {
-    title: "Intelligence",
-    items: [
-      { href: "/forecast", label: "Cash Forecast", urdu: "پیشگوئی", icon: TrendingUp, feature: "forecast" },
-      { href: "/alerts", label: "Risk & Alerts", urdu: "خطرات", icon: AlertTriangle, feature: "alerts" },
-      { href: "/simulator", label: "Shock Simulator", urdu: "جھٹکا ٹیسٹ", icon: Zap, feature: "simulator" },
-      { href: "/recovery", label: "Recovery", urdu: "بحالی", icon: LifeBuoy, feature: "recovery" },
-    ],
-  },
-  {
-    title: "Insights",
-    items: [
-      { href: "/reports", label: "Reports", urdu: "رپورٹ", icon: FileBarChart2, feature: "reports" },
-      { href: "/copilot", label: "Copilot", urdu: "مددگار", icon: MessageSquareText, feature: "copilot" },
-      { href: "/impact", label: "SDG Impact", urdu: "اثرات", icon: Globe2, feature: "impact" },
-      { href: "/learn", label: "Learn the terms", urdu: "سیکھیں", icon: BookOpen },
-    ],
-  },
-];
+/** Every route that belongs to a module, so direct URLs to modules outside the account type are blocked. */
+const PATH_FEATURE: Record<string, Feature> = {
+  "/transactions": "ledger", "/import": "import", "/inventory": "inventory", "/forecast": "forecast", "/alerts": "alerts",
+  "/simulator": "simulator", "/recovery": "recovery", "/reports": "reports", "/copilot": "copilot", "/budget": "budget",
+  "/goals": "goals", "/controls": "controls", "/actions": "actions", "/team": "team",
+};
 
 const KIND_STYLE: Record<string, string> = {
   sme: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300",
@@ -55,10 +30,10 @@ const KIND_STYLE: Record<string, string> = {
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { has } = useApp();
+  const { has, business } = useApp();
   return (
     <nav className="space-y-5 px-3 py-4" aria-label="Main">
-      {GROUPS.map((g) => {
+      {navGroups(business.kind).map((g) => {
         const items = g.items.filter((i) => !i.feature || has(i.feature));
         if (!items.length) return null;
         return (
@@ -95,10 +70,6 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-const PATH_FEATURE: Record<string, Feature> = Object.fromEntries(
-  GROUPS.flatMap((g) => g.items).filter((i) => i.feature).map((i) => [i.href, i.feature as Feature]),
-);
-
 function ModuleGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { has, business } = useApp();
@@ -106,7 +77,7 @@ function ModuleGuard({ children }: { children: React.ReactNode }) {
   if (feature && !has(feature)) {
     return (
       <div className="mx-auto mt-16 max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-slate-900">
-        <p className="text-base font-semibold text-slate-900 dark:text-white">Not part of your account type</p>
+        <h1 className="text-base font-semibold text-slate-900 dark:text-white">Not part of your account type</h1>
         <p className="mt-2 text-sm text-slate-500">This module isn&apos;t available for {business.kind_label.toLowerCase()} accounts. Each login has one account type; sign up with a different account to use other modules.</p>
         <Link href="/dashboard" className="mt-5 inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-slate-900">Back to dashboard</Link>
       </div>
@@ -116,7 +87,7 @@ function ModuleGuard({ children }: { children: React.ReactNode }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { business, me } = useApp();
+  const { business, me, role, can, switchWorkspace } = useApp();
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -183,17 +154,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </span>
                 )}
               </div>
-              <p className="hidden truncate text-[11px] text-slate-500 sm:block">{business.kind_label}{business.city ? ` · ${business.city}` : ""} · PKR</p>
+              <p className="hidden truncate text-[11px] text-slate-500 sm:block">{business.kind_label}{business.city ? ` · ${business.city}` : ""} · PKR{me.workspaces.length > 1 || role !== "owner" ? ` · your role: ${role}` : ""}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {me.workspaces.length > 1 && (
+              <label className="hidden items-center gap-1.5 text-[11px] text-slate-500 sm:flex">
+                <span className="sr-only">Switch workspace</span>
+                <select value={business.id} onChange={(e) => switchWorkspace(e.target.value)}
+                  className="max-w-[12rem] rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                  {me.workspaces.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.role})</option>)}
+                </select>
+              </label>
+            )}
             <span className="hidden items-center gap-1.5 text-[11px] text-slate-500 md:flex"><Activity className="h-3.5 w-3.5 text-brand-600" /> {me.user.email ?? "Signed in"}</span>
             <ThemeToggle />
           </div>
         </header>
-        <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">
-          <div className="print-container mx-auto max-w-7xl"><ModuleGuard>{children}</ModuleGuard></div>
+        <main className="flex-1 px-4 pb-28 pt-6 md:px-6 lg:px-8">
+          <div className="print-container mx-auto max-w-7xl">
+            {!can("write") && (
+              <p className="no-print mb-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200" role="status">
+                You have view-only access to this workspace: you can view and export, but changes are blocked.
+              </p>
+            )}
+            <ModuleGuard>{children}</ModuleGuard>
+          </div>
         </main>
+        {business.features.includes("copilot") && <FloatingCopilot />}
       </div>
     </div>
   );

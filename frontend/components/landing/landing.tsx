@@ -125,6 +125,9 @@ function HeroVisual() {
 interface Bench {
   businesses_evaluated: number; horizon_days: number; accuracy_pct: number; recall_pct: number; false_positive_rate_pct: number;
   naive_recall_pct: number; naive_false_positive_rate_pct: number; avg_warning_lead_days: number | null; note: string;
+  band_coverage_day14_pct?: number | null; limitations?: string; definitions?: Record<string, string>;
+  sdg_targets?: { target: string; goal: string; text: string; link: string }[];
+  hypothetical?: { pathway: string[]; caveat: string };
 }
 
 export default function Landing() {
@@ -263,7 +266,7 @@ export default function Landing() {
             <p className="text-sm font-semibold uppercase tracking-widest text-brand-400">Measured, not claimed</p>
             <h2 className="mt-2 max-w-2xl text-3xl font-semibold tracking-tight">We test the forecaster on businesses it has never seen</h2>
             {bench === "unavailable" ? (
-              <p className="mt-10 text-sm text-slate-400">Benchmark results could not be loaded right now. They are published in the app&apos;s SDG Impact page with full definitions.</p>
+              <p className="mt-10 text-sm text-slate-400">Benchmark results could not be loaded right now. Please try again later.</p>
             ) : (
               <div className="mt-10 grid grid-cols-2 gap-8 md:grid-cols-4">
                 {[
@@ -312,7 +315,7 @@ export default function Landing() {
           <Reveal>
             <p className="text-sm font-semibold uppercase tracking-widest text-brand-600">Sustainable Development Goals</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">Built toward resilience, measured honestly</h2>
-            <p className="mx-auto mt-3 max-w-2xl text-slate-600 dark:text-slate-400">FinDost relates to these UN SDG targets. Software alone doesn&apos;t achieve them — the Impact Center separates what we measure from what we hope.</p>
+            <p className="mx-auto mt-3 max-w-2xl text-slate-600 dark:text-slate-400">FinDost relates to these UN SDG targets. Software alone doesn&apos;t achieve them — below we keep what we measure separate from what we hope.</p>
           </Reveal>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
             {SDGS.map((s, i) => (
@@ -324,6 +327,40 @@ export default function Landing() {
               </Reveal>
             ))}
           </div>
+          {bench && bench !== "unavailable" && bench.sdg_targets && (
+            <div className="mt-12 grid gap-4 text-left md:grid-cols-2">
+              {bench.sdg_targets.map((t) => (
+                <Reveal key={t.target}>
+                  <div className="h-full rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t.goal} · target {t.target}</p>
+                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">{t.text}</p>
+                    <p className="mt-2 text-sm font-medium text-slate-900 dark:text-white">{t.link}</p>
+                  </div>
+                </Reveal>
+              ))}
+            </div>
+          )}
+          {bench && bench !== "unavailable" && bench.hypothetical && (
+            <div className="mt-8 grid gap-4 text-left md:grid-cols-2">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                <p className="font-semibold">Hypothetical impact pathway — not measured</p>
+                <ol className="mt-2 list-decimal space-y-1 pl-5">{bench.hypothetical.pathway.map((p) => <li key={p}>{p}</li>)}</ol>
+                <p className="mt-2 text-xs">{bench.hypothetical.caveat}</p>
+              </div>
+              <details className="rounded-xl border border-slate-200 bg-white p-5 text-sm dark:border-slate-800 dark:bg-slate-900">
+                <summary className="cursor-pointer font-semibold text-slate-900 dark:text-white">How the benchmark is measured</summary>
+                <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">{bench.limitations}</p>
+                {bench.band_coverage_day14_pct !== undefined && bench.band_coverage_day14_pct !== null && (
+                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">The forecast range contained the real 14-day balance for {bench.band_coverage_day14_pct}% of test businesses: it covers everyday sales and spending variation, not late customer payments.</p>
+                )}
+                <dl className="mt-3 space-y-2 text-xs">
+                  {Object.entries(bench.definitions ?? {}).map(([k, v]) => (
+                    <div key={k}><dt className="font-semibold capitalize text-slate-700 dark:text-slate-300">{k.replace(/_/g, " ")}</dt><dd className="text-slate-600 dark:text-slate-400">{v}</dd></div>
+                  ))}
+                </dl>
+              </details>
+            </div>
+          )}
         </div>
       </section>
 

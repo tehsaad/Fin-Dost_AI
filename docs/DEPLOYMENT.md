@@ -19,7 +19,7 @@ Production: frontend https://findostai.vercel.app (Vercel project `findost-ai`),
 
 | Project | Variables |
 |---|---|
-| findost-api | `DATABASE_URL`, `SUPABASE_URL`, `CORS_ORIGINS`, `ENVIRONMENT=production`, `GROQ_API_KEY`, `GROQ_MODEL` (optional), `GEMINI_API_KEY`, `GEMINI_MODEL` (optional), `AI_DAILY_LIMIT`, `ANON_AI_DAILY_LIMIT`, `ANON_MAX_TRANSACTIONS`, `DEMO_TTL_DAYS` (optional), `CRON_SECRET` |
+| findost-api | `RESEND_API_KEY` (optional, team invitation emails), `EMAIL_FROM`, `APP_URL`, `DATABASE_URL`, `SUPABASE_URL`, `CORS_ORIGINS`, `ENVIRONMENT=production`, `GROQ_API_KEY`, `GROQ_MODEL` (optional), `GEMINI_API_KEY`, `GEMINI_MODEL` (optional), `AI_DAILY_LIMIT`, `ANON_AI_DAILY_LIMIT`, `ANON_MAX_TRANSACTIONS`, `DEMO_TTL_DAYS` (optional), `CRON_SECRET` |
 | findost-ai | `API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED`, `NEXT_PUBLIC_AUTH_MODE=supabase`, `NEXT_PUBLIC_SITE_URL` |
 | Supabase Auth (config push) | `TURNSTILE_SECRET_KEY`, `RESEND_API_KEY` |
 
@@ -47,3 +47,10 @@ so the previous backend keeps working with the new schema. Auth: set `enable_con
 
 See README → Run locally. On machines where Node cannot reach Google Fonts (`ETIMEDOUT`), build with
 `NODE_OPTIONS=--network-family-autoselection-attempt-timeout=2000`.
+
+## Enterprise upgrade (branch `feat/enterprise-workflow-upgrade`)
+
+1. Apply `supabase/migrations/20261013000000_enterprise_workspaces.sql` (5 new tables, additive, RLS on).
+2. Optional: set `RESEND_API_KEY` (a sending-only key restricted to tehsaad.site) on `findost-api` so team
+   invitations are emailed; otherwise owners share the link themselves.
+3. Deploy backend, then frontend.

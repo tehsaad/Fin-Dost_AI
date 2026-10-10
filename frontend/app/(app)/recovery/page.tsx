@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { CheckCircle2, ChevronDown, Info, Layers, Save, Scale, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/shell";
 import { useApp } from "@/components/app/app-provider";
+import { termsFor } from "@/lib/terms";
+import { ProposeAction } from "@/components/app/propose-action";
 import { Card } from "@/components/shared/card";
 import { Button } from "@/components/shared/button";
 import { Select } from "@/components/shared/form";
@@ -71,6 +73,8 @@ function StrategyCard({ s, rank, selected, onSelect }: { s: Strategy; rank: numb
               <p className="font-semibold text-slate-700 dark:text-slate-200">Evidence</p>
               <ul className="list-disc pl-4 text-slate-500">{s.evidence.map((a) => <li key={a}>{a}</li>)}</ul>
             </div>
+            <ProposeAction title={s.title} description={`${s.problem} ${s.action}`} sourceType="recovery" sourceRef={s.id}
+              adjustments={s.adjustments as unknown as Record<string, unknown>[]} />
           </div>
           <div className="space-y-2">
             <p className="font-semibold text-slate-700 dark:text-slate-200">Score breakdown (0–1, weighted by your priorities)</p>
@@ -150,8 +154,8 @@ function RecoveryInner() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Recovery strategy engine" urdu="بحالی کی حکمت عملی"
-        description="Options generated from your own records — overdue invoices, upcoming bills, spending and stock — each priced by re-running the forecast. Decision support, not guaranteed outcomes." />
+      <PageHeader title={termsFor(business.kind).recovery} urdu="بحالی کی حکمت عملی"
+        description={termsFor(business.kind).recoveryDescription} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="Situation to fix" subtitle="Baseline, a quick shock or a saved scenario">

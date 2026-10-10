@@ -18,7 +18,8 @@ import { signOut } from "@/lib/auth";
 import { rupeesToPaisa } from "@/lib/format";
 
 export default function SettingsPage() {
-  const { business, me, refresh } = useApp();
+  const { business, me, refresh, can, role } = useApp();
+  const admin = can("admin");
   const router = useRouter();
   const [f, setF] = useState({
     name: business.name, city: business.city ?? "", reserve: String(business.cash_reserve_paisa / 100),
@@ -68,8 +69,10 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Settings & profile" urdu="ترتیبات" description="Your workspace, opening balances, safety reserve and privacy choices." />
+      {!admin && <Notice>Workspace settings, AI consent and data resets are managed by the workspace owner. Your role here is <strong>{role}</strong>.</Notice>}
       <form onSubmit={save} className="grid gap-6 lg:grid-cols-3">
-        <Card title="Business profile" className="lg:col-span-2">
+        <fieldset disabled={!admin} className="lg:col-span-2">
+        <Card title="Business profile" >
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Name" htmlFor="s-name"><Input id="s-name" required maxLength={120} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
             <Field label="City" htmlFor="s-city"><Input id="s-city" maxLength={80} value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} /></Field>
@@ -82,9 +85,10 @@ export default function SettingsPage() {
             <Field label="Opening wallet (Rs.)" htmlFor="s-w"><Input id="s-w" inputMode="decimal" value={f.wallet} onChange={(e) => setF({ ...f, wallet: e.target.value })} /></Field>
           </div>
         </Card>
+        </fieldset>
         <div className="space-y-6">
           <Card title="Privacy & AI">
-            <Toggle id="s-ai" checked={ai.enabled} onChange={(v) => { void ai.setAi(v); }} label="Allow AI assistance"
+            <Toggle id="s-ai" checked={ai.enabled} onChange={(v) => { if (admin) void ai.setAi(v); }} label="Allow AI assistance"
               description="Off by default. When on: (1) Copilot sends already-computed figures, with customer and supplier names masked, to Groq (or Gemini as backup) to word the answer — any answer with an unverified number is discarded — and, when its own rules can't place a question, sends the question text (names masked) to pick the right calculation; (2) receipt photos you choose to upload are read by Google Gemini and shown for your review before anything is saved. AI never calculates your balances." />
             <p className="mt-2 text-[11px] text-slate-500" aria-live="polite">{ai.saving ? "Saving…" : ai.enabled ? "AI assistance is on. Saved to your account." : "AI assistance is off. Saved to your account."}</p>
             {ai.error && <Notice tone="danger">{ai.error}</Notice>}
@@ -98,11 +102,11 @@ export default function SettingsPage() {
         </div>
         <div className="flex items-center justify-end gap-3 lg:col-span-3">
           {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
-          <Button type="submit" disabled={saving}>{saving ? <Spinner /> : <Save className="h-4 w-4" />} Save settings</Button>
+          {admin && <Button type="submit" disabled={saving}>{saving ? <Spinner /> : <Save className="h-4 w-4" />} Save settings</Button>}
         </div>
       </form>
 
-      <Card title="Data" subtitle="Demo data is fictional and clearly labelled">
+      {admin && <Card title="Data" subtitle="Demo data is fictional and clearly labelled">
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-md border border-slate-200 p-4 dark:border-slate-700">
             <p className="flex items-center gap-2 text-sm font-medium"><RotateCcw className="h-4 w-4 text-blue-600" /> Reset demo data</p>
@@ -115,7 +119,7 @@ export default function SettingsPage() {
             <Button variant="danger" size="sm" className="mt-3" onClick={() => setConfirm("clear")}><Trash2 className="h-4 w-4" /> Clear all data</Button>
           </div>
         </div>
-      </Card>
+      </Card>}
 
       <Modal isOpen={confirm !== null} onClose={() => setConfirm(null)} title={confirm === "reset" ? "Reset to demo data?" : "Delete all data?"} maxWidth="md">
         <p className="text-sm text-slate-600 dark:text-slate-300">{confirm === "reset" ? "All current records are replaced by the demo dataset." : "All transactions, customers, bills, products and scenarios in this workspace are permanently deleted."} This cannot be undone.</p>

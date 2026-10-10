@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Activity, CalendarRange, FlaskConical, Info, TrendingDown, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/app/shell";
+import { termsFor } from "@/lib/terms";
+import { useApp } from "@/components/app/app-provider";
 import { Card } from "@/components/shared/card";
 import { ErrorState, LevelBadge, Notice, PageSkeleton, ValueTag } from "@/components/shared/feedback";
 import { BalanceChart } from "@/components/charts";
@@ -24,6 +26,7 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 export default function ForecastPage() {
+  const { business } = useApp();
   const [horizon, setHorizon] = useState(30);
   const { data, error, loading, reload } = useApi<Forecast>(`/forecast?horizon=${horizon}`);
   if (error) return <ErrorState error={error} onRetry={reload} />;
@@ -34,8 +37,8 @@ export default function ForecastPage() {
 
   return (
     <div className={cn("space-y-6", loading && "opacity-70")}>
-      <PageHeader title="Cash-flow forecast" urdu="نقدی کی پیشگوئی"
-        description="Daily projected balance built from your recorded bills and invoices, detected monthly patterns and a back-tested model of everyday sales and spending."
+      <PageHeader title={termsFor(business.kind).forecast} urdu="نقدی کی پیشگوئی"
+        description={termsFor(business.kind).forecastDescription}
         actions={
           <div className="flex rounded-md border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900" role="group" aria-label="Horizon">
             {[14, 30, 60, 90].map((h) => (

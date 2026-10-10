@@ -7,6 +7,8 @@ import {
   Landmark, Receipt, ShieldAlert, Sparkles, Wallet,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/shell";
+import { WorkflowPanel } from "@/components/app/workflow-panel";
+import { termsFor } from "@/lib/terms";
 import { useApp } from "@/components/app/app-provider";
 import { Card } from "@/components/shared/card";
 import { Button } from "@/components/shared/button";
@@ -56,6 +58,7 @@ function Kpi({ label, value, sub, type, icon: Icon, tone = "neutral", href }: {
 
 export default function DashboardPage() {
   const { business, has } = useApp();
+  const t = termsFor(business.kind);
   const [range, setRange] = useState("30");
   const [explain, setExplain] = useState<CopilotAnswer | null>(null);
   const [explaining, setExplaining] = useState(false);
@@ -89,8 +92,8 @@ export default function DashboardPage() {
   return (
     <div className={cn("space-y-6", loading && "opacity-70 transition-opacity")}>
       <PageHeader
-        title="Financial Command Center"
-        urdu="مالیاتی مرکز"
+        title={t.dashboard}
+        urdu={t.personal ? "میرا حساب" : "مالیاتی مرکز"}
         description={`Your position as of ${formatDate(data.as_of, "long")}. Every number is calculated from your records; forecasts are labelled.`}
         actions={
           <>
@@ -124,20 +127,22 @@ export default function DashboardPage() {
           </div>
           <div className="flex gap-2">
             <Link href="/alerts"><Button variant="outline" size="sm">See evidence</Button></Link>
-            <Link href="/recovery"><Button size="sm">Plan recovery <ArrowRight className="h-3.5 w-3.5" /></Button></Link>
+            <Link href="/recovery"><Button size="sm">{t.personal ? "Adjust spending" : "Plan recovery"} <ArrowRight className="h-3.5 w-3.5" /></Button></Link>
           </div>
         </div>
       )}
 
+      <WorkflowPanel />
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
         <Kpi label="Cash balance (all accounts)" value={formatPKR(k.cash_balance.value_paisa)} type="actual" icon={Wallet}
           sub={<span>Cash {formatScale(k.cash_balance.accounts.cash)} · Bank {formatScale(k.cash_balance.accounts.bank)} · Wallet {formatScale(k.cash_balance.accounts.wallet)}</span>} />
-        <Kpi label={`Revenue (${range}d)`} value={formatPKR(k.revenue.value_paisa)} type="actual" icon={ArrowUpRight} tone="good"
-          sub={`${formatPKR(k.revenue.cash_paisa)} cash · ${formatPKR(k.revenue.credit_paisa)} on credit`} />
+        <Kpi label={`${t.income} (${range}d)`} value={formatPKR(k.revenue.value_paisa)} type="actual" icon={ArrowUpRight} tone="good"
+          sub={t.personal ? undefined : `${formatPKR(k.revenue.cash_paisa)} cash · ${formatPKR(k.revenue.credit_paisa)} on credit`} />
         <Kpi label={`Expenses (${range}d)`} value={formatPKR(k.expenses.value_paisa)} type="actual" icon={ArrowDownRight} tone="warn" />
-        <Kpi label={`Net profit (${range}d)`} value={formatPKR(k.net_profit.value_paisa)} type="estimated" icon={Landmark}
+        <Kpi label={`${t.personal ? "Left over" : "Net profit"} (${range}d)`} value={formatPKR(k.net_profit.value_paisa)} type="estimated" icon={Landmark}
           tone={k.net_profit.value_paisa >= 0 ? "good" : "bad"}
-          sub={k.net_profit.margin_pct !== null ? `${k.net_profit.margin_pct}% margin · stock bought counts as expense` : undefined} />
+          sub={t.personal ? "Income minus expenses" : k.net_profit.margin_pct !== null ? `${k.net_profit.margin_pct}% margin · stock bought counts as expense` : undefined} />
         {has("receivables") && (
           <Kpi label="Owed to you (udhaar)" value={formatPKR(k.receivables.value_paisa)} type="actual" icon={Receipt}
             tone={k.receivables.overdue_paisa ? "bad" : "neutral"} href="/transactions?tab=receivables"
@@ -191,7 +196,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card title="Recommended actions" subtitle="Calculated against the projected shortage">
+        <Card title={t.personal ? "Suggested adjustments" : "Recommended actions"} subtitle="Calculated against the projected shortage">
           {data.recommended_actions.length === 0 ? (
             <p className="text-sm text-slate-500">No shortage projected, so no recovery action is needed right now. Run a shock test to check resilience.</p>
           ) : (

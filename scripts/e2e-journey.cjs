@@ -115,11 +115,16 @@ const SHOTS = require("path").resolve("e2e-shots"); fs.mkdirSync(SHOTS, { recurs
 
   // settings AI panel + impact definitions
   await go("/settings");
+  await page.waitForSelector("text=not set up", { timeout: 30000 }).catch(() => {});
   t = await main();
   ok("settings AI panel shows providers not set up", t.includes("Groq") && t.includes("not set up"));
-  await go("/impact");
-  t = await main();
-  ok("impact shows false alarms and definitions", t.includes("False alarms") && t.includes("How these numbers are defined"));
+  // SDG impact now lives on the public landing page
+  await page.goto(BASE + "/", { waitUntil: "load" });
+  await page.waitForTimeout(2000);
+  await page.locator("#impact").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(1500);
+  const impact = await page.locator("#impact").innerText();
+  ok("impact on landing: SDG targets and definitions", /Hypothetical impact pathway/.test(impact) && /How the benchmark is measured/.test(impact));
   await page.screenshot({ path: `${SHOTS}/12_impact.png`, fullPage: true });
 
   // mobile layout check

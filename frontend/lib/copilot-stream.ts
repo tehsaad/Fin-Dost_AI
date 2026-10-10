@@ -1,7 +1,6 @@
 "use client";
 
-import { api, ApiError } from "./api";
-import { getAccessToken } from "./auth";
+import { api, ApiError, authHeaders } from "./api";
 import type { CopilotAnswer, CopilotContext, CopilotStage, CopilotTurn } from "./types";
 
 /** How many earlier chat messages are sent with each question (the API refuses more). */
@@ -49,9 +48,7 @@ export function buildHistory(messages: ({ role: "user"; text: string } | { role:
  * Falls back to the plain JSON endpoint when streaming isn't available (old proxy, no ReadableStream).
  */
 export async function askCopilot(req: CopilotRequest, onStage: (stage: CopilotStage) => void, signal?: AbortSignal): Promise<CopilotAnswer> {
-  const token = await getAccessToken();
-  const headers: Record<string, string> = { Accept: "text/event-stream", "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  const headers: Record<string, string> = { Accept: "text/event-stream", "Content-Type": "application/json", ...(await authHeaders()) };
   let res: Response | null = null;
   try {
     res = await fetch("/api/v1/copilot/stream", { method: "POST", headers, body: JSON.stringify(req), signal });

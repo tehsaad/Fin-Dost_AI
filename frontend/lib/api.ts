@@ -16,10 +16,38 @@ export class ApiError extends Error {
 
 type Options = { method?: string; body?: unknown; form?: FormData; signal?: AbortSignal };
 
-export async function api<T = unknown>(path: string, opts: Options = {}): Promise<T> {
+const WORKSPACE_KEY = "findost_workspace";
+
+/** The workspace the user picked (shared enterprise workspaces). The server only honours it for members. */
+export function getWorkspaceId(): string | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage.getItem(WORKSPACE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setWorkspaceId(id: string | null) {
+  try {
+    if (id) window.localStorage.setItem(WORKSPACE_KEY, id);
+    else window.localStorage.removeItem(WORKSPACE_KEY);
+  } catch {
+    /* storage unavailable: the server falls back to the user's own workspace */
+  }
+}
+
+/** Auth + workspace headers for every API call (also used by downloads and the Copilot stream). */
+export async function authHeaders(): Promise<Record<string, string>> {
   const token = await getAccessToken();
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
+  const ws = getWorkspaceId();
+  if (ws) headers["X-Workspace-Id"] = ws;
+  return headers;
+}
+
+export async function api<T = unknown>(path: string, opts: Options = {}): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json", ...(await authHeaders()) };
   let body: BodyInit | undefined;
   if (opts.form) body = opts.form;
   else if (opts.body !== undefined) {
@@ -55,8 +83,7 @@ export async function api<T = unknown>(path: string, opts: Options = {}): Promis
 
 /** Download an authenticated file (CSV exports) through the browser. */
 export async function downloadFile(path: string, filename: string) {
-  const token = await getAccessToken();
-  const res = await fetch(`/api/v1${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const res = await fetch(`/api/v1${path}`, { headers: await authHeaders() });
   if (!res.ok) throw new ApiError(res.status, "download_failed", "Download failed");
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
