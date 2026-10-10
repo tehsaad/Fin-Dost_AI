@@ -318,8 +318,17 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
                 next_step="Keep a second supplier for key items to reduce dependence on one source.",
                 limitations="Some products only have one distributor; this may be unavoidable.", link="/transactions"))
 
-    # 9. Unusual transactions
+    # 9. Unusual transactions: one alert per transaction. The same entry can be both an unusual amount and a
+    # possible duplicate (or a duplicate of several earlier entries); merge those flags into one alert.
+    merged: dict[str, dict] = {}
     for a in detect_anomalies(snap, today):
+        prev = merged.get(a["id"])
+        if prev is None:
+            merged[a["id"]] = dict(a)
+        elif not (a["type"] == "possible_duplicate" and prev.get("duplicate_of")):
+            prev["reason"] = f'{prev["reason"]}; also {a["reason"]}'
+            prev.setdefault("duplicate_of", a.get("duplicate_of"))
+    for a in merged.values():
         alerts.append(_alert(
             "unusual_transaction", a["id"], 42 if a["type"] == "amount_outlier" else 38,
             ("Unusual amount: " if a["type"] == "amount_outlier" else "Possible duplicate: ") + (a["description"] or a["category"]),
