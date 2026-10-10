@@ -214,6 +214,15 @@ def test_recovery_collect_overdue_exact_effect():
     assert rec["combined_plan"]["result"]["shortage_date"] is None
 
 
+def test_deferring_a_bill_past_the_window_is_not_shown_as_a_saving():
+    # Rs. 30,000 bill on day 25, deferred 14 days -> day 39, outside a 30-day forecast. It is still owed.
+    s = snap(opening_cash=rupees(10_000), pays=[Pay("p1", "s1", "Supplier", "Inventory Purchase", d(-6), d(25), rupees(30_000))])
+    out = simulate(s, T, [{"type": "defer_payables", "payable_ids": ["p1"], "defer_days": 14}], 30)
+    assert out["comparison"]["end_balance_change_paisa"] == 0
+    assert out["scenario"]["summary"]["min_balance_paisa"] == rupees(-20_000)
+    assert any("after the 30-day window" in n for n in out["notes"])
+
+
 def test_recovery_compare_two_strategies():
     s = _shortage_case()
     out = compare_strategies(s, T, [], [

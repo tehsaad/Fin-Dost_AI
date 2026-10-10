@@ -51,7 +51,10 @@ function StrategyCard({ s, rank, selected, onSelect }: { s: Strategy; rank: numb
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <span className="tabular text-lg font-semibold text-slate-900 dark:text-white">{s.score}</span>
+          <span className="text-right" title="Ranking score from 0 to 100, using your priority weights. It is not a probability of success.">
+            <span className="tabular block text-lg font-semibold text-slate-900 dark:text-white">{s.score}</span>
+            <span className="block text-[10px] text-slate-400">rank score</span>
+          </span>
           <label className="flex items-center gap-1 text-[11px] text-slate-500"><input type="checkbox" checked={selected} onChange={(e) => onSelect(e.target.checked)} /> compare</label>
         </div>
       </div>

@@ -319,11 +319,13 @@ def apply_adjustment(comp: Components, snap: Snapshot, adj: dict[str, Any]) -> l
                     half = ev.amount // 2
                     new_events.append(Event(day=ev.day + days, amount=ev.amount - half, kind="payable",
                                             label=ev.label + " (2nd half)", category=ev.category,
-                                            ref_type="payable", ref_id=ev.ref_id, certainty="simulated"))
+                                            ref_type="payable", ref_id=ev.ref_id, certainty="simulated",
+                                            meta={"deferred": True}))
                     ev.amount = half
                     ev.note += "; split 50/50 (negotiated)"
                 else:
                     ev.day += days
+                    ev.meta["deferred"] = True
                     ev.note += f"; deferred {days} days (negotiated)"
         comp.events.extend(new_events)
         notes.append(f"{fmt_pkr(total)} of supplier bills {'split' if split else 'deferred'} by {days} days")
@@ -383,8 +385,18 @@ def simulate(snap: Snapshot, today: date, adjustments: list[dict], horizon: int 
     notes: list[str] = []
     for adj in adjustments:
         notes.extend(apply_adjustment(scenario, snap, adj))
+    carried = 0
     for ev in scenario.events:  # moved items may fall outside the window
         ev.day = max(ev.day, 1)
+        if ev.day > scenario.horizon and ev.meta.get("deferred"):
+            # A deferred bill is still owed: keep it on the last day instead of letting it vanish from the window,
+            # otherwise "pay later" would look like money saved.
+            carried += -ev.amount
+            ev.day = scenario.horizon
+            ev.note += "; now falls due after the forecast window - counted on its last day"
+    if carried:
+        notes.append(f"{fmt_pkr(carried)} of deferred bills fall due after the {scenario.horizon}-day window; "
+                     "they are counted on its last day so delaying a payment is not shown as a saving")
     result = project(scenario)
     return {
         "baseline": baseline,

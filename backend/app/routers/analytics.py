@@ -523,6 +523,8 @@ def public_benchmark():
         "median_abs_error_day14_paisa": b["median_abs_error_day14_paisa"],
         "naive_median_abs_error_day14_paisa": b["naive_median_abs_error_day14_paisa"],
         "band_coverage_day14_pct": b.get("band_coverage_day14_pct"),
+        "band_coverage_day14_with_invoices_pct": b.get("band_coverage_day14_with_invoices_pct"),
+        "band_coverage_day14_without_invoices_pct": b.get("band_coverage_day14_without_invoices_pct"),
         "definitions": b["definitions"],
         "limitations": b["limitations"],
         "sdg_targets": SDG_TARGETS,

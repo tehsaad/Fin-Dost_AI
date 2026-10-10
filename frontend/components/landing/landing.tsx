@@ -12,33 +12,34 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/format";
 
 const MODULES = ["Digital Khata", "Udhaar tracking", "CSV import", "Cash-flow forecast", "Early warnings", "Shock simulator",
-  "Recovery plans", "What-if decisions", "Inventory insights", "Printable reports", "Urdu Copilot", "SDG impact"];
+  "Recovery options", "Budget vs actual", "Savings goals", "Data checks", "Approvals & team roles", "Inventory insights",
+  "Printable reports", "Copilot in English & Urdu"];
 
 const STEPS = [
   { t: "Input", d: "Khata entries, CSV statements, bills and udhaar" },
   { t: "Analyze", d: "Exact paisa ledger, cash vs revenue vs credit" },
-  { t: "Predict", d: "Back-tested daily forecast with uncertainty" },
+  { t: "Predict", d: "Daily forecast with a range for everyday variation" },
   { t: "Explain", d: "Every alert shows its evidence and limits" },
   { t: "Recommend", d: "Recovery options priced by the engine" },
   { t: "Simulate", d: "Floods, price rises, late customers" },
-  { t: "Measure", d: "Held-out benchmark, honest SDG framing" },
+  { t: "Measure", d: "Synthetic benchmark with its limits stated" },
 ];
 
 const FEATURES = [
   { icon: NotebookPen, title: "Digital Khata", urdu: "ڈیجیٹل کھاتہ", text: "Sales, expenses, udhaar and supplier credit in one ledger. A credit sale is revenue — but never confused with cash." },
-  { icon: LineChart, title: "Cash-flow forecasting", urdu: "پیشگوئی", text: "Daily projections for 7, 14 and 30+ days from your real bills, invoices and patterns — with a back-tested error band." },
+  { icon: LineChart, title: "Cash-flow forecasting", urdu: "پیشگوئی", text: "A day-by-day cash projection for the next 30 days, built from your recorded bills, invoices and spending patterns, with a range for everyday variation." },
   { icon: BellRing, title: "Early warnings", urdu: "انتباہ", text: "Shortages, reserve breaches, overdue customers, bill spikes and unusual entries — each with evidence and next steps." },
   { icon: Zap, title: "Shock simulator", urdu: "جھٹکا ٹیسٹ", text: "What if sales drop 20%, a flood closes the shop, or your biggest customer pays late? See the new low point and date." },
   { icon: LifeBuoy, title: "Recovery strategies", urdu: "بحالی", text: "Collect, renegotiate, delay or cut — every option re-runs the forecast and is ranked by your own priorities." },
-  { icon: Bot, title: "Urdu Copilot", urdu: "مددگار", text: "“Kya main agle hafte 50,000 kharch kar sakta hoon?” Answers come from your numbers, never made up." },
-  { icon: FileUp, title: "Smart CSV import", urdu: "ڈیٹا شامل کریں", text: "Bank and wallet exports, Roman Urdu headers, Rs. formats and DD/MM dates — validated and de-duplicated." },
-  { icon: ShieldCheck, title: "Private by design", urdu: "رازداری", text: "Each login sees only its own data. No bank passwords. AI is used only with your consent, with customer names masked: it can help understand a Copilot question and word the answer, but never calculates your figures." },
+  { icon: Bot, title: "Urdu Copilot", urdu: "مددگار", text: "“Kya main agle hafte 50,000 kharch kar sakta hoon?” Figures in answers are calculated from your records; questions it can't answer from them are declined." },
+  { icon: FileUp, title: "Smart CSV import", urdu: "ڈیٹا شامل کریں", text: "CSV files from bank or wallet statements, with Roman Urdu headers, Rs. formats and DD/MM dates. Rows are validated and likely duplicates are flagged for you to confirm." },
+  { icon: ShieldCheck, title: "Private by design", urdu: "رازداری", text: "A workspace is visible only to its owner and the people they invite. No bank passwords. AI is used only with your consent: with customer names masked it can help understand a Copilot question and word the answer, and it reads receipt photos you upload for your review. Your figures are calculated by FinDost's own engine, not by AI." },
   { icon: Languages, title: "Made for Pakistan", urdu: "پاکستان کے لیے", text: "PKR everywhere, lakh/crore summaries, Urdu explanations and simple words for profit, udhaar and cash flow." },
 ];
 
 const AUDIENCE = [
   { kind: "sme", icon: Store, title: "Shops & small businesses", urdu: "دکاندار", text: "Kiryana, retail, home-based and micro-businesses with udhaar and supplier credit." },
-  { kind: "enterprise", icon: Building2, title: "Enterprises", urdu: "ادارے", text: "Larger operations with export buyers, raw-material contracts and payroll." },
+  { kind: "enterprise", icon: Building2, title: "Enterprises", urdu: "ادارے", text: "Finance teams: budgets vs actual, data checks, approvals for proposed actions, and owner / editor / viewer roles." },
   { kind: "household", icon: Home, title: "Households", urdu: "گھرانے", text: "Salary, rent, school fees, bills and committees — before the month runs out." },
   { kind: "student", icon: GraduationCap, title: "Students", urdu: "طلبہ", text: "Allowance, tutoring income, hostel fees and exam costs, planned ahead." },
 ];
@@ -78,7 +79,7 @@ function HeroVisual() {
   const chips = [
     { cls: "left-0 top-6 md:-left-10", delay: 0.9, icon: TrendingDown, tone: "text-red-500", title: "Shortage in 9 days", sub: "Lowest point −Rs. 128,782" },
     { cls: "right-0 top-28 md:-right-8", delay: 1.3, icon: BellRing, tone: "text-amber-500", title: "Rs. 215,000 udhaar overdue", sub: "4 customers · oldest 95 days" },
-    { cls: "bottom-4 left-6 md:-left-6", delay: 1.7, icon: CheckCircle2, tone: "text-emerald-500", title: "Plan removes the shortage", sub: "Collect + renegotiate + clear stock" },
+    { cls: "bottom-4 left-6 md:-left-6", delay: 1.7, icon: CheckCircle2, tone: "text-emerald-500", title: "Recovery option removes the shortage", sub: "Ask suppliers for 14 more days" },
   ];
   return (
     <div className="relative mx-auto w-full max-w-lg">
@@ -117,7 +118,7 @@ function HeroVisual() {
           <p className="text-[10px] text-slate-500">{c.sub}</p>
         </motion.div>
       ))}
-      <p className="mt-3 text-center text-[10px] text-slate-500">Illustration from the fictional demo shop (Bilal General Store)</p>
+      <p className="mt-3 text-center text-[10px] text-slate-500">Figures from the fictional demo shop (Bilal General Store); the chart is a simplified illustration</p>
     </div>
   );
 }
@@ -125,7 +126,8 @@ function HeroVisual() {
 interface Bench {
   businesses_evaluated: number; horizon_days: number; accuracy_pct: number; recall_pct: number; false_positive_rate_pct: number;
   naive_recall_pct: number; naive_false_positive_rate_pct: number; avg_warning_lead_days: number | null; note: string;
-  band_coverage_day14_pct?: number | null; limitations?: string; definitions?: Record<string, string>;
+  band_coverage_day14_pct?: number | null; band_coverage_day14_with_invoices_pct?: number | null;
+  band_coverage_day14_without_invoices_pct?: number | null; limitations?: string; definitions?: Record<string, string>;
   sdg_targets?: { target: string; goal: string; text: string; link: string }[];
   hypothetical?: { pathway: string[]; caveat: string };
 }
@@ -182,7 +184,7 @@ export default function Landing() {
               نقدی کی کمی سے پہلے خبردار — اور بچاؤ کا منصوبہ بھی
             </motion.p>
             <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.4 }} className="mt-4 max-w-xl text-lg text-slate-600 dark:text-slate-400">
-              FinDost turns your khata into a forecast, warns you weeks ahead, stress-tests your business against real shocks and compares recovery plans — with every number traceable to your own records.
+              FinDost turns your records into a 30-day cash forecast, warns you before a projected shortage, tests what-if shocks and compares recovery options — with every figure calculated from your own records.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.55 }} className="mt-8 flex flex-wrap gap-3">
               <Link href="/signup" className="group inline-flex items-center gap-2 rounded-lg bg-brand-700 px-5 py-3 text-sm font-semibold text-white shadow-glow transition hover:bg-brand-800">
@@ -218,7 +220,7 @@ export default function Landing() {
         <Reveal className="mx-auto max-w-2xl text-center">
           <p className="text-sm font-semibold uppercase tracking-widest text-brand-600">How it works</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">From a paper khata to a plan</h2>
-          <p className="mt-3 text-slate-600 dark:text-slate-400">AI that does the maths, not just the talking. Each step produces numbers you can check.</p>
+          <p className="mt-3 text-slate-600 dark:text-slate-400">A calculation engine does the maths; AI only helps with wording, and only with your consent. Each step produces numbers you can check.</p>
         </Reveal>
         <div className="relative mt-14">
           <div className="absolute left-0 right-0 top-6 hidden h-px bg-gradient-to-r from-transparent via-brand-300 to-transparent lg:block dark:via-brand-700" />
@@ -239,7 +241,7 @@ export default function Landing() {
         <div className="mx-auto max-w-7xl px-5">
           <Reveal className="mx-auto max-w-2xl text-center">
             <p className="text-sm font-semibold uppercase tracking-widest text-brand-600">Features</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">Everything a small business needs to stay afloat</h2>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">What FinDost does</h2>
           </Reveal>
           <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map((f, i) => (
@@ -264,7 +266,7 @@ export default function Landing() {
           <div className="relative overflow-hidden rounded-3xl bg-slate-950 px-6 py-14 text-white md:px-14">
             <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 animate-blob rounded-full bg-brand-500/30 blur-3xl" />
             <p className="text-sm font-semibold uppercase tracking-widest text-brand-400">Measured, not claimed</p>
-            <h2 className="mt-2 max-w-2xl text-3xl font-semibold tracking-tight">We test the forecaster on businesses it has never seen</h2>
+            <h2 className="mt-2 max-w-2xl text-3xl font-semibold tracking-tight">We test the forecaster on synthetic businesses, using days it was not shown</h2>
             {bench === "unavailable" ? (
               <p className="mt-10 text-sm text-slate-400">Benchmark results could not be loaded right now. Please try again later.</p>
             ) : (
@@ -273,7 +275,7 @@ export default function Landing() {
                   ["Synthetic test businesses", bench ? <Counter key="a" value={bench.businesses_evaluated} /> : "—"],
                   [`Shortages caught within ${bench?.horizon_days ?? 14} days`, bench ? <Counter key="b" value={bench.recall_pct} suffix="%" decimals={1} /> : "—"],
                   ["False alarms vs naive rule", bench ? <span key="c"><Counter value={bench.false_positive_rate_pct} suffix="%" decimals={1} /> <span className="text-base text-slate-400">vs {bench.naive_false_positive_rate_pct}%</span></span> : "—"],
-                  ["Average early warning", bench?.avg_warning_lead_days ? <Counter key="d" value={bench.avg_warning_lead_days} suffix=" days" decimals={1} /> : "—"],
+                  ["Average notice before a caught shortage", bench?.avg_warning_lead_days ? <Counter key="d" value={bench.avg_warning_lead_days} suffix=" days" decimals={1} /> : "—"],
                 ].map(([l, v], i) => (
                   <div key={i}><p className="text-3xl font-semibold md:text-4xl">{v}</p><p className="mt-1 text-sm text-slate-400">{l}</p></div>
                 ))}
@@ -291,8 +293,8 @@ export default function Landing() {
       <section id="for-whom" className="mx-auto max-w-7xl scroll-mt-20 px-5 pb-24">
         <Reveal className="mx-auto max-w-2xl text-center">
           <p className="text-sm font-semibold uppercase tracking-widest text-brand-600">Who it&apos;s for</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">Four account types, one login each</h2>
-          <p className="mt-3 text-slate-600 dark:text-slate-400">Pick yours at sign-up. Your account type decides your modules, and your data stays yours.</p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">Four account types</h2>
+          <p className="mt-3 text-slate-600 dark:text-slate-400">Pick yours at sign-up. Your account type decides your modules. Enterprise owners can invite team members with set roles.</p>
         </Reveal>
         <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {AUDIENCE.map((a, i) => (
@@ -351,7 +353,10 @@ export default function Landing() {
                 <summary className="cursor-pointer font-semibold text-slate-900 dark:text-white">How the benchmark is measured</summary>
                 <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">{bench.limitations}</p>
                 {bench.band_coverage_day14_pct !== undefined && bench.band_coverage_day14_pct !== null && (
-                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">The forecast range contained the real 14-day balance for {bench.band_coverage_day14_pct}% of test businesses: it covers everyday sales and spending variation, not late customer payments.</p>
+                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">The forecast range contained the real 14-day balance for {bench.band_coverage_day14_pct}% of test businesses
+                    {bench.band_coverage_day14_without_invoices_pct != null && bench.band_coverage_day14_with_invoices_pct != null
+                      ? ` (${bench.band_coverage_day14_without_invoices_pct}% of those with no open customer invoices, ${bench.band_coverage_day14_with_invoices_pct}% of those with open invoices)`
+                      : ""}. The range covers everyday sales and spending variation only, not late customer payments, so treat it as a rough guide.</p>
                 )}
                 <dl className="mt-3 space-y-2 text-xs">
                   {Object.entries(bench.definitions ?? {}).map(([k, v]) => (
@@ -369,7 +374,7 @@ export default function Landing() {
         <Reveal>
           <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 via-emerald-600 to-sky-700 px-6 py-16 text-center text-white">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.18),transparent_45%)]" />
-            <h2 className="relative text-3xl font-semibold tracking-tight md:text-4xl">Your next cash crunch is predictable.</h2>
+            <h2 className="relative text-3xl font-semibold tracking-tight md:text-4xl">Check your cash outlook before the month ends.</h2>
             <p className="urdu relative mt-3 text-xl text-emerald-50" lang="ur">آج ہی تیاری شروع کریں</p>
             <div className="relative mt-8 flex flex-wrap justify-center gap-3">
               <Link href="/signup" className="rounded-lg bg-white px-6 py-3 text-sm font-semibold text-emerald-800 shadow-lg transition hover:scale-105">Create free account</Link>

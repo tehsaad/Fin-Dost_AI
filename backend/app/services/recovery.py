@@ -45,8 +45,8 @@ def _shortage_effect(summary: dict, cmp: dict) -> str:
 PERSONAL_WORDING = {
     "defer_suppliers": ("Ask to move a bill payment by 14 days",
                         "Ask the landlord, school, utility or lender to split or move the payment by 14 days."),
-    "delay_purchases": ("Postpone non-essential shopping for 2 weeks",
-                        "Buy only essentials for the next 14 days and move bigger purchases later."),
+    "delay_purchases": ("Buy 30% less non-essential items for 2 weeks",
+                        "Buy only essentials for the next 14 days and skip bigger optional purchases."),
     "cut_discretionary": ("Cut optional spending by 30%", None),
 }
 
@@ -140,9 +140,9 @@ def generate_candidates(snap: Snapshot, today: date, scenario_result: dict, hori
                                                or any(e["kind"] == "pipeline" for e in scenario_result["events"])):
         cands.append({
             "id": "delay_purchases", "action_type": "delay_purchases",
-            "title": "Delay non-essential stock purchases by 2 weeks",
+            "title": "Buy 30% less non-essential stock for 2 weeks",
             "problem": "Stock buying is a large share of outgoing cash.",
-            "action": "Buy only fast-moving items for the next 14 days; postpone slow-moving bulk orders.",
+            "action": "Buy only fast-moving items for the next 14 days and skip slow-moving bulk orders.",
             "adjustments": [{"type": "delay_purchases", "percent": 30, "start_day": 1, "duration_days": 14}],
             "timing": "Next 14 days",
             "feasibility": 0.65, "feasibility_reason": "under your control, but fast movers must stay in stock",
@@ -258,11 +258,14 @@ def recommend(snap: Snapshot, today: date, scenario_adjustments: list[dict], hor
         {"id": "review_unusual", "title": "Investigate unusual expenses",
          "detail": "Open the Alerts page and check any 'unusual transaction' flags. Unusual does not mean wrong - confirm with receipts.",
          "quantified": False},
-        {"id": "support_programs", "title": "Explore verified business-support programmes",
-         "detail": "Check eligibility for government or bank SME support (for example SMEDA advisory services or State Bank of Pakistan "
-                   "SME finance schemes) on their official websites. FinDost does not estimate any financing amount.",
-         "quantified": False},
     ]
+    if snap.kind in ("sme", "enterprise"):
+        info_only.append(
+            {"id": "support_programs", "title": "Look into official business-support programmes",
+             "detail": "You may check eligibility for government or bank SME support (for example SMEDA advisory services or "
+                       "State Bank of Pakistan SME finance schemes) on their official websites. FinDost has not checked your "
+                       "eligibility and does not estimate any financing amount.",
+             "quantified": False})
     return {
         "weights": weights,
         "baseline": {"summary": baseline["summary"],

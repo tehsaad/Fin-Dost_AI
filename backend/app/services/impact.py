@@ -56,10 +56,10 @@ DEFINITIONS = {
 SDG_TARGETS = [
     {"target": "1.4", "goal": "SDG 1 - No Poverty",
      "text": "Equal rights to economic resources and access to basic services and financial services, including microfinance.",
-     "link": "FinDost gives very small businesses free cash-flow tools usually only available to firms with accountants."},
+     "link": "FinDost offers free cash-flow tracking and forecasting to very small businesses and households, including those without an accountant."},
     {"target": "1.5", "goal": "SDG 1 - No Poverty",
      "text": "Build the resilience of the poor and vulnerable and reduce their exposure to economic, social and environmental shocks.",
-     "link": "The shock simulator and early warnings help owners prepare for floods, price rises and late payments before they hit."},
+     "link": "The shock simulator and early warnings are designed to help owners see the effect of floods, price rises and late payments on their cash before they happen."},
     {"target": "8.3", "goal": "SDG 8 - Decent Work and Economic Growth",
      "text": "Support productive activities, entrepreneurship and the growth of micro-, small- and medium-sized enterprises, "
              "including through access to financial services.",

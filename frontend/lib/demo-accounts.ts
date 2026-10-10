@@ -11,7 +11,7 @@ export const DEMO_PERSONAS: { kind: Kind; label: string; who: string; name: stri
 
 export const KIND_INFO: Record<Kind, { title: string; urdu: string; blurb: string; modules: string }> = {
   sme: { title: "Shop / small business", urdu: "دکان / چھوٹا کاروبار", blurb: "Kiryana, retail, home-based or micro-business", modules: "Khata, udhaar, bills, inventory, forecast, shocks, recovery" },
-  enterprise: { title: "Enterprise", urdu: "بڑا ادارہ", blurb: "Multi-site or larger business with buyers and suppliers", modules: "All business modules at larger scale" },
-  household: { title: "Household", urdu: "گھرانہ", blurb: "Family budget, salary, bills and school fees", modules: "Budget ledger, bills, forecast, shocks, recovery" },
-  student: { title: "Student", urdu: "طالب علم", blurb: "Allowance, part-time income, hostel and fees", modules: "Budget ledger, bills, forecast, shocks, recovery" },
+  enterprise: { title: "Enterprise", urdu: "بڑا ادارہ", blurb: "Multi-site or larger business with buyers and suppliers", modules: "Business modules plus budgets, data checks, approvals and team roles" },
+  household: { title: "Household", urdu: "گھرانہ", blurb: "Family budget, salary, bills and school fees", modules: "Income & expenses, bills, budget, savings goals, forecast, what-if" },
+  student: { title: "Student", urdu: "طالب علم", blurb: "Allowance, part-time income, hostel and fees", modules: "Income & expenses, bills, budget, savings goals, forecast, what-if" },
 };

@@ -18,7 +18,7 @@ export default function OpenGraphImage() {
           <div style={{ fontSize: 68, fontWeight: 800, lineHeight: 1.05 }}>See cash trouble before it happens.</div>
           <div style={{ fontSize: 30, color: "#a7f3d0" }}>Digital khata · 30-day forecast · early warnings · shock tests · recovery options</div>
         </div>
-        <div style={{ fontSize: 26, color: "#94a3b8" }}>For Pakistani shops, households and students · English & Urdu · findostai.vercel.app</div>
+        <div style={{ fontSize: 26, color: "#94a3b8" }}>For Pakistani shops, enterprises, households and students · English & Urdu · findostai.vercel.app</div>
       </div>
     ),
     size,

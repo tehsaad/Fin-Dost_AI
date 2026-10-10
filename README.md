@@ -64,7 +64,7 @@ The Copilot is a floating assistant on every page. SDG impact and the benchmark 
 | J | Reports | Reporting period with opening → cash in/out → closing cash, revenue/expenses/profit, risks, scenarios, recovery options, data quality, limitations, timestamp; CSV and print-to-PDF; totals reconcile with the dashboard (tested) |
 | K | Copilot | English / Roman Urdu / Urdu questions ("Can I afford Rs. 50,000 next week?"). Answers come from the engine; with consent, Groq (or Gemini as backup) rewords them — names masked, any added number rejected |
 | L | Urdu | Urdu summaries and glossary with right-to-left-safe figures |
-| M | SDG impact | Held-out synthetic benchmark (120 businesses, 14-day horizon): recall, false alarms, balance error and lead time vs a naive rule, with written definitions; SDG 1 / 8 / 9 / 10 target mapping |
+| M | SDG impact (public home page) | Held-out synthetic benchmark (120 businesses, 14-day horizon): recall, false alarms, balance error and lead time vs a naive rule, with written definitions; SDG 1 / 8 / 9 / 10 target mapping |
 
 ## Repository layout
 
@@ -86,7 +86,7 @@ cd backend
 python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 DATABASE_URL=sqlite:///./local.db DEV_AUTH_SECRET=local-dev-secret-change-me-0123456789 \
   .venv/bin/uvicorn app.main:app --port 8000
-.venv/bin/python -m pytest          # 154 tests, no network or API keys needed
+.venv/bin/python -m pytest          # 157 tests, no network or API keys needed
 ```
 
 Frontend (Node 20+), developer sign-in without Supabase:
@@ -161,7 +161,7 @@ Order matters when the schema changes: **migrate first, then deploy the backend,
 
 ## Testing
 
-- `backend/tests` — 88 tests (incl. the 12-step workflow, private-demo isolation and cleanup, developer-auth guard): hand-calculated ledger reconciliation across dashboard/report/exports, forecast edge
+- `backend/tests` — 157 tests (incl. the 12-step workflow, private-demo isolation and cleanup, developer-auth guard): hand-calculated ledger reconciliation across dashboard/report/exports, forecast edge
   cases (leap day, negative balance, no data), exact shock arithmetic, alert evidence, CSV import (settlement,
   duplicates, corrections, atomicity), cross-user isolation on 14 routes, AI routing/fallback/validation with mocked
   HTTP, benchmark reproducibility, auth and module separation.

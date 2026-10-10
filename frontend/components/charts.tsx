@@ -63,7 +63,7 @@ export function BalanceChart({ history, points, reserve = 0, shortageDate, heigh
           <XAxis dataKey="date" tickFormatter={(d) => formatDate(d)} tick={axisStyle} minTickGap={24} axisLine={false} tickLine={false} />
           <YAxis tickFormatter={(v) => formatScale(v)} tick={axisStyle} width={58} axisLine={false} tickLine={false} />
           <Tooltip content={<MoneyTooltip />} />
-          <Area type="monotone" dataKey="band" name="Likely range (80%)" stroke="none" fill="url(#bandFill)" isAnimationActive={false} />
+          <Area type="monotone" dataKey="band" name="Range for everyday variation" stroke="none" fill="url(#bandFill)" isAnimationActive={false} />
           <Line type="monotone" dataKey="actual" name="Actual balance" stroke="#64748b" strokeWidth={2} dot={false} isAnimationActive={false} />
           <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#2563eb" strokeWidth={2.2} strokeDasharray="6 4" dot={false} isAnimationActive={false} />
           {scenario && <Line type="monotone" dataKey="scenario" name={scenarioLabel} stroke="#c026d3" strokeWidth={2.2} dot={false} isAnimationActive={false} />}

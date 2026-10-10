@@ -170,7 +170,7 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 xl:grid-cols-3">
         <Card className="xl:col-span-2" title="Cash balance: actual and 30-day forecast"
-          subtitle={`Solid = recorded · dashed = forecast (${data.forecast.confidence.level} confidence) · shaded = likely range`}
+          subtitle={`Solid = recorded · dashed = forecast (${data.forecast.confidence.level} confidence) · shaded = range for everyday variation`}
           action={<Link href="/forecast" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400">Details</Link>}>
           <BalanceChart history={data.forecast.history} points={data.forecast.points} reserve={s.reserve_paisa} shortageDate={s.shortage_date} />
         </Card>
