@@ -2,16 +2,15 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { Button } from "@/components/shared/button";
 import { Notice, Spinner } from "@/components/shared/feedback";
-import { api, errorMessage, setWorkspaceId } from "@/lib/api";
+import { api, enterWorkspace, errorMessage } from "@/lib/api";
 
 interface Preview { workspace: string | null; role: string; expires_at: string; email_matches: boolean }
 
 function InviteInner() {
-  const router = useRouter();
   const token = useSearchParams().get("token") ?? "";
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,8 +26,8 @@ function InviteInner() {
     setError(null);
     try {
       const r = await api<{ workspace_id: string }>("/invitations/accept", { body: { token } });
-      setWorkspaceId(r.workspace_id);
-      router.replace("/dashboard");
+      // Joining adds this workspace next to the user's own account; nothing in their own account changes.
+      await enterWorkspace(r.workspace_id, "/dashboard");
     } catch (e) {
       setError(errorMessage(e));
       setBusy(false);
@@ -49,7 +48,7 @@ function InviteInner() {
           )}
         </div>
       )}
-      <p className="mt-4 text-center text-sm"><Link href="/dashboard" className="text-brand-700 hover:underline">Go to my workspace</Link></p>
+      <p className="mt-4 text-center text-sm"><Link href="/workspaces" className="text-brand-700 hover:underline">Go to my workspaces</Link></p>
     </AuthLayout>
   );
 }

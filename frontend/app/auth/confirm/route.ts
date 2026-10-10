@@ -10,8 +10,8 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const nextParam = searchParams.get("next") ?? "/dashboard";
-  const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/dashboard";
+  const nextParam = searchParams.get("next") ?? "/workspaces";
+  const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/workspaces";
   if (tokenHash && type && TYPES.includes(type)) {
     const supabase = await getServerSupabase();
     const { error } = (await supabase?.auth.verifyOtp({ type, token_hash: tokenHash })) ?? { error: new Error("Auth not configured") };

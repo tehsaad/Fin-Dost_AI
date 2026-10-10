@@ -1,187 +1,197 @@
 # FinDost AI
 
-Cash-flow early warning and recovery planning for Pakistani shops (SMEs), enterprises, households and students.
-FinDost turns a digital khata (ledger + udhaar) into a 30-day cash forecast, flags trouble before it happens,
-stress-tests shocks, and ranks concrete recovery actions — in English and Urdu.
+Cash-flow early warning and recovery planning for Pakistani shops, enterprises, households and students — in
+English and Urdu.
 
-**Live:** https://findostai.vercel.app  ·  API: https://findost-api.vercel.app/api/v1/health
+**Live:** https://findostai.vercel.app · **API health:** https://findost-api.vercel.app/api/v1/health ·
+**Presentation guide:** [docs/PRESENTATION_GUIDE.md](docs/PRESENTATION_GUIDE.md)
 
-**Try it:** on the sign-in page choose **Try a private demo** (shop, enterprise, household or student). Each visitor
-gets their own workspace with synthetic data — nobody else can see or change it — deleted after 7 days unless you
-keep it by adding your email in Settings. Real accounts need email verification.
+## Problem and solution
+
+A shop can be profitable on paper and still run out of cash: customers pay late (udhaar) while rent, suppliers and
+bills fall due on fixed dates. Households and students have the same timing problem with salaries, allowances and
+fees. FinDost turns your records into a **30-day cash forecast**, warns you **before a projected shortage** with the
+records behind it, lets you **test what-if shocks**, and **prices recovery options** by re-running the forecast.
+Enterprises add budgets, data checks, an approval workflow and team roles.
+
+Every figure is calculated by FinDost's deterministic engine from your own records. AI is optional: with your
+consent it helps understand questions, words answers and reads receipt photos into proposals you review — it never
+calculates your figures.
+
+## Screenshots
+
+Real screens from the local app with **fictional demo data**:
+
+| Workspace selection | Switcher |
+|---|---|
+| ![Workspace selection](docs/screenshots/workspace-selector.png) | ![Workspace switcher](docs/screenshots/workspace-switcher.png) |
+| **Shop dashboard** | **Recovery options** |
+| ![Dashboard](docs/screenshots/dashboard-sme.png) | ![Recovery](docs/screenshots/recovery.png) |
+| **Copilot** | **Team & access** |
+| ![Copilot](docs/screenshots/copilot.png) | ![Team](docs/screenshots/team.png) |
+
+## Key features
+
+- **Digital khata** — transactions, customers/suppliers, udhaar receivables and payables, part-payments, change history.
+- **Import** — CSV with Roman Urdu headers, Pakistani amount/date formats, validation, duplicate flags, row
+  corrections, one atomic commit; optional receipt reading (Gemini) into a reviewable row.
+- **Forecast** — day-by-day projection from bills, age-weighted receivables, monthly patterns and everyday flows;
+  model picked per workspace by back-test; range for everyday variation.
+- **Early warnings** — 14 rules (shortage, reserve breach, overdue udhaar, concentration, spikes, duplicates,
+  budget overrun …), each with amount at stake and linked records. Severity is urgency, not probability.
+- **Shock simulator and recovery** — sales drop, late payments, price/rent/utility rises, flood, income delay;
+  recovery options generated from your data, simulated and ranked by your priorities.
+- **Budgets and savings goals** — budget vs actual with over-budget alerts; goal tracking for personal accounts.
+- **Enterprise workflow** — data checks (not bank reconciliation), proposed actions → owner approval → completion
+  with an audit trail; owner / editor / viewer roles; invitations.
+- **Workspaces** — one login can open its own account plus workspaces it was invited to; you choose at each
+  sign-in and switch without logging out.
+- **Reports** — period report with opening → cash in/out → closing, CSV and print; figures reconcile with the
+  dashboard.
+- **Copilot** — floating assistant on every page; English, Urdu and Roman Urdu questions; answers from the engine.
+- **Private demo** — per-visitor fictional workspace, deleted after 7 days.
+
+## Account types
+
+| Type | For | Distinctive modules |
+|---|---|---|
+| SME / shop | Kiryana, retail, micro-business | Khata, udhaar, inventory, data checks, tasks |
+| Enterprise | Finance teams | Everything in SME + Team & Access; navigation grouped as a finance workflow |
+| Household | Family budgets | Income & expenses, bills, budget, savings goals, personal what-ifs |
+| Student | Allowance, fees, part-time income | Same as household, student wording |
+
+The type is chosen once, when you create your own workspace; the server enforces the modules
+(`backend/app/auth.py`, `FEATURES`).
+
+## Technology
+
+| Layer | Stack |
+|---|---|
+| Frontend | Next.js 15.5.27, React 19.1.1, TypeScript 5.9.2, Tailwind CSS 3.4.17, Recharts 2.15.4, Supabase JS/SSR |
+| Backend | Python 3.12, FastAPI 0.143.0, Pydantic 2.14.0, SQLAlchemy 2.1.4, psycopg 3.3.6, NumPy 2.5.3, httpx, PyJWT |
+| Data & auth | Supabase PostgreSQL (RLS enabled, no public policies) and Supabase Auth (email confirmation, Google, anonymous demo, Cloudflare Turnstile) |
+| AI (optional) | Groq (default `openai/gpt-oss-20b`), Google Gemini (default `gemini-3.5-flash-lite`) via plain HTTPS |
+| Email | Resend (auth emails through Supabase SMTP; team invitations through the Resend API) |
+| Hosting | Vercel: `findost-ai` (frontend) and `findost-api` (backend + daily cron) |
+| Tests | pytest, Vitest, ESLint, `tsc`, headless-Chrome scripts in `scripts/` |
 
 ## Architecture
 
 ```
-Browser ──► Next.js 15 frontend (Vercel: findost-ai)
-              │  Supabase Auth (email/password + Cloudflare Turnstile captcha, Google OAuth)
-              │  /api/v1/* rewritten server-side to the API (same origin, no CORS)
-              ▼
-            FastAPI backend (Vercel Python: findost-api)
-              │  verifies Supabase JWTs via JWKS (ES256)
-              ▼
-            Supabase Postgres (transaction pooler, RLS on, no public policies)
-
-            Optional, server-side only:  Groq (explanations)  ·  Google Gemini (receipt reading, fallback)
+Browser ─► Next.js (Vercel) ── Supabase Auth (session, captcha)
+             │  /api/v1/* rewritten server-side to the API (same origin; API URL never in the bundle)
+             │  Authorization: Bearer <JWT>  ·  X-Workspace-Id: <chosen workspace>
+             ▼
+           FastAPI (Vercel)  verify JWT ─► resolve workspace + membership + role ─► engine
+             │                                                                    │
+             ▼                                                                    ▼ optional, consent + quota
+           PostgreSQL (Supabase)                                     Groq / Gemini (wording, receipts)
 ```
 
-The core promise — **records → validated ledger → deterministic forecast → explainable warning → shock simulation →
-quantified recovery options → exportable report** — works with no AI provider configured. AI only words answers
-the engine already computed and reads receipts into proposals the user must review.
+Diagrams, request lifecycle and the full API reference: [docs/PRESENTATION_GUIDE.md](docs/PRESENTATION_GUIDE.md)
+(sections 9–13). Code: `frontend/` (App Router), `backend/app/routers` (API), `backend/app/services` (engine).
 
-- **Account types → modules.** Each user owns one workspace whose type (sme / enterprise / household / student)
-  is picked at sign-up. The type decides the modules: the nav hides the others and the API rejects them
-  (`403 feature_unavailable`). Students and households get no inventory; the type cannot be switched later.
-- **Money** is stored as integer paisa. Revenue is not cash: a credit sale creates a receivable and only moves cash
-  when the customer pays.
-- **The browser never talks to the database.** Row-level security is enabled on every table with no policies, so
-  the anon key cannot read business data; only the backend (direct DB connection) can, scoped to the signed-in owner.
+## Security model (summary)
 
-## Account types
-
-* **Enterprise** — financial operations: budget vs actual, data checks, scenarios and recovery, Tasks & Approvals
-  (propose → owner approves → completed), reports, and **Team & Access** for several users per company
-  (owner / finance editor / viewer, enforced on the server).
-* **SME / shop** — digital khata, udhaar, inventory, forecasts, recovery, tasks.
-* **Household / Student** — personal finance: income & expenses, monthly budget, savings goals, personal
-  what-if planner (salary/allowance late or lower), spending adjustment plan.
-
-The Copilot is a floating assistant on every page. SDG impact and the benchmark are on the public home page.
-
-## Modules
-
-| | Module | What it does |
-|---|---|---|
-| A | Command Center | Cash today, 30-day runway, health index (0–100), top risks, next best action |
-| B | Digital Khata | Transactions, customers/suppliers, udhaar receivables & payables, part-payments, WhatsApp reminder links, CSV export, change history (audit trail) on every edit/delete |
-| C | Import | CSV: column mapping, date-format inference, Pakistani number formats, categorisation, per-row corrections, duplicates skipped unless confirmed, payments matched to open invoices (never over-settled), one atomic commit. Optional receipt/bill photo read by Gemini into a reviewable row |
-| D | Forecasting | Opening balance + receivables (age-weighted collection) + payables + detected recurring bills + variable flows. Weekday-seasonal vs flat model chosen by rolling back-test; 80% band from back-test error (none shown without enough history); runway |
-| E | Early warnings | 13 rules: projected shortage, reserve breach (names the bills), overdue udhaar, concentration, bill increases, spikes, anomalies/duplicates, slow stock … each with amount at stake and the records behind it. Severity is urgency, not probability |
-| F | Shock simulator | Sales decline, delayed payments, supplier price rise, rent increase, utility hikes, unexpected expense, flood/interruption, customer loss — baseline vs shocked path on the same engine |
-| G | Recovery engine | Generates candidate actions from your data (collect udhaar, defer payables, cut discretionary spend, liquidate slow stock …), re-projects each, scores liquidity/feasibility/cost/risk, builds a combined plan |
-| H | What-if | Move a receivable/payable, change sales/opex/purchases, add an emergency expense, saved scenarios and comparison |
-| I | Inventory | Stock value, days of cover, slow movers, reorder hints (SME/enterprise only) |
-| J | Reports | Reporting period with opening → cash in/out → closing cash, revenue/expenses/profit, risks, scenarios, recovery options, data quality, limitations, timestamp; CSV and print-to-PDF; totals reconcile with the dashboard (tested) |
-| K | Copilot | English / Roman Urdu / Urdu questions ("Can I afford Rs. 50,000 next week?"). Answers come from the engine; with consent, Groq (or Gemini as backup) rewords them — names masked, any added number rejected |
-| L | Urdu | Urdu summaries and glossary with right-to-left-safe figures |
-| M | SDG impact (public home page) | Held-out synthetic benchmark (120 businesses, 14-day horizon): recall, false alarms, balance error and lead time vs a naive rule, with written definitions; SDG 1 / 8 / 9 / 10 target mapping |
-
-## Repository layout
-
-```
-frontend/   Next.js app (landing, login/signup/onboarding, 13 app pages)
-backend/    FastAPI app (app/services = engine, app/routers = API), tests, scripts
-supabase/   config.toml (auth settings) and SQL migrations (initial schema + audit/AI-usage tables)
-docs/       ARCHITECTURE, FORECAST_METHODOLOGY, SECURITY, DEPLOYMENT, TESTING, BASELINE_AUDIT,
-            IMPLEMENTATION_REPORT, DEMO_SCRIPT (+ pass-1 TECHNICAL_AUDIT, IMPLEMENTATION_PLAN)
-scripts/    e2e-journey.cjs (browser check of the demo journey)
-```
+- Supabase JWT verified on every protected request; developer tokens disabled in production.
+- **Identity ≠ workspace:** a workspace id from the browser is honoured only for its owner or an active member;
+  anything else returns 404. Roles: owner (all), editor (records, imports, proposals), viewer (view + export);
+  read-only roles cannot change data.
+- Tenant isolation is enforced in the API (every query scoped to the resolved workspace; tested). RLS blocks the
+  public Supabase key; per-tenant RLS policies are on the roadmap.
+- Invitations: hashed, single-use, 7-day, recipient-bound tokens; honest `email_sent` status.
+- AI: opt-in per workspace, names masked, answers with unverified numbers discarded, daily quota.
+- Secrets only in deployment environment variables. Details and known gaps: [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Run locally
 
-Backend (Python 3.12+):
+Backend (Python 3.12+; no Supabase or AI keys needed):
 
 ```bash
 cd backend
 python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 DATABASE_URL=sqlite:///./local.db DEV_AUTH_SECRET=local-dev-secret-change-me-0123456789 \
   .venv/bin/uvicorn app.main:app --port 8000
-.venv/bin/python -m pytest          # 157 tests, no network or API keys needed
 ```
 
-Frontend (Node 20+), developer sign-in without Supabase:
+Frontend (Node 20+; developer sign-in instead of Supabase):
 
 ```bash
 cd frontend
 npm install
 NEXT_PUBLIC_AUTH_MODE=dev DEV_AUTH_SECRET=local-dev-secret-change-me-0123456789 \
   API_URL=http://localhost:8000 npm run dev      # http://localhost:3000
-npm run typecheck && npm run lint && npm test && npm run build
 ```
 
-To run against Supabase locally instead, fill `frontend/.env.local` from `frontend/.env.example`
-and leave `NEXT_PUBLIC_AUTH_MODE` empty.
+Sign in with any email on the developer form, choose an account type, and start with demo data. To use Supabase
+locally instead, fill `frontend/.env.local` from `frontend/.env.example` and leave `NEXT_PUBLIC_AUTH_MODE` empty.
+
+## Tests
+
+```bash
+cd backend && .venv/bin/python -m pytest                        # 168 tests (mocked AI, SQLite)
+cd frontend && npm run typecheck && npm run lint && npm test && npm run build   # 28 Vitest tests
+# browser checks against the local stack (needs Chrome + playwright-core):
+node scripts/e2e-enterprise.cjs     # enterprise workflow, roles, workspace selection/switching (26 checks)
+node scripts/e2e-journey.cjs        # 10-step demo journey (15 checks)
+```
+
+Results and what is not verified: [docs/TESTING.md](docs/TESTING.md).
 
 ## Environment variables
 
-Backend (`backend/.env.example`):
+Names only — never commit values.
+
+**Backend** (`backend/.env.example`)
 
 | Name | Purpose |
 |---|---|
-| `DATABASE_URL` | SQLite locally; Supabase transaction-pooler URL (port 6543) in production |
-| `SUPABASE_URL` | Used to fetch the JWKS that verifies access tokens |
-| `SUPABASE_JWT_SECRET` | Only for projects still on legacy HS256 tokens |
-| `DEV_AUTH_SECRET` | Local developer tokens only — never set in production |
-| `CORS_ORIGINS` | Allowed browser origins (the frontend proxies, so normally only needed for direct calls) |
-| `GROQ_API_KEY`, `GROQ_MODEL` | Optional. Explanations in English / Urdu / Roman Urdu. Default model `openai/gpt-oss-20b` (strict JSON schema) |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | Optional. Receipt/bill reading and fallback for explanations. Default `gemini-3.5-flash-lite` |
-| `LLM_TIMEOUT_SECONDS`, `AI_DAILY_LIMIT` | AI request timeout (12 s) and per-workspace daily AI request cap (60), stored in the database |
-| `ANON_AI_DAILY_LIMIT`, `ANON_MAX_TRANSACTIONS`, `DEMO_TTL_DAYS` | Private-demo limits (10 AI calls/day, 3,000 transactions, deleted after 7 days) |
-| `CRON_SECRET` | Authenticates the daily Vercel Cron that deletes expired private demos |
-| `FINDOST_TODAY` | Pin "today" for reproducible tests |
-| `MAX_UPLOAD_BYTES`, `ENVIRONMENT` | Upload limit, environment label |
+| `DATABASE_URL` | SQLite locally; Supabase transaction-pooler URL in production |
+| `SUPABASE_URL` | JWKS location for verifying access tokens |
+| `SUPABASE_JWT_SECRET` | Only for legacy HS256 projects |
+| `DEV_AUTH_SECRET` | Local developer tokens; ignored in production |
+| `CORS_ORIGINS` | Allowed origins for direct API calls |
+| `GROQ_API_KEY`, `GROQ_MODEL` | Optional AI wording / question interpretation |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | Optional receipt reading and AI fallback |
+| `LLM_TIMEOUT_SECONDS`, `AI_DAILY_LIMIT` | AI timeout (12 s) and daily per-workspace cap (60) |
+| `ANON_AI_DAILY_LIMIT`, `ANON_MAX_TRANSACTIONS`, `DEMO_TTL_DAYS` | Private-demo limits |
+| `CRON_SECRET` | Authenticates the daily demo-cleanup cron |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL` | Optional team-invitation emails and invitation link base |
+| `FINDOST_TODAY`, `MAX_UPLOAD_BYTES`, `ENVIRONMENT` | Test date pin, upload limit, environment |
 
-Frontend (`frontend/.env.example`): `API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED`, `NEXT_PUBLIC_AUTH_MODE`, `NEXT_PUBLIC_SITE_URL`
-(canonical URL for SEO), `DEV_AUTH_SECRET` (dev only). Supabase Auth also needs `TURNSTILE_SECRET_KEY` and
-`RESEND_API_KEY` when running `supabase config push` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
-
-## AI providers
-
-| Task | Provider (fallback) | What is sent | Safeguards |
-|---|---|---|---|
-| Copilot explanation | Groq → Gemini | The question and the engine's computed evidence, names replaced by `[P1]`… | Consent toggle; strict JSON schema; Pydantic validation; answer discarded if it contains a number not in the evidence |
-| Receipt / bill photo | Gemini only | The uploaded image/PDF | Consent; JPG/PNG/WEBP/PDF magic-byte check, 4 MB; document treated as untrusted (instructions in it ignored); Decimal amounts; low confidence, odd dates or non-PKR are held back until the user corrects them; nothing reaches the ledger until the user confirms |
-
-One provider is called per request; the next is tried only on failure (timeout, 429 after one capped retry, 5xx,
-invalid output). Free tiers change and are not unlimited — Groq lists e.g. 30 requests/min and 1,000/day for
-`openai/gpt-oss-20b`; check the providers' current limits. When AI is unavailable or the daily cap is reached,
-FinDost answers with its own calculated templates. Settings → **Test AI connection** checks the live setup with a
-fixed fictional sentence (no user data).
-
-Get keys at https://console.groq.com/keys and https://aistudio.google.com/apikey, add them as **sensitive**
-environment variables to the backend Vercel project only, and redeploy. Never add them to the frontend.
+**Frontend** (`frontend/.env.example`): `API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED`, `NEXT_PUBLIC_AUTH_MODE`,
+`NEXT_PUBLIC_SITE_URL`, `DEV_AUTH_SECRET` (dev only). Supabase Auth config push also uses `TURNSTILE_SECRET_KEY`
+and `RESEND_API_KEY`.
 
 ## Deployment
 
-Order matters when the schema changes: **migrate first, then deploy the backend, then the frontend.**
-
-- **Supabase:** `supabase link`, `supabase db push` (applies `supabase/migrations/*`, all tables with RLS),
-  `supabase config push`
-  (site URL, redirects, Turnstile captcha — secret supplied as `TURNSTILE_SECRET_KEY`).
-  Demo logins: `DATABASE_URL=… SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… python backend/scripts/seed_demo_accounts.py`.
-- **Vercel:** two projects — `backend/` (framework `fastapi`) and `frontend/` (framework `nextjs`), each with a
-  `vercel.json`. Deploy with `vercel deploy --prod` from each folder. The frontend build fails on purpose if
-  `API_URL` is missing. Health check: `GET /api/v1/health` (status + which AI providers are configured, booleans only).
-- **Benchmark:** after changing the forecast code run `python backend/scripts/run_benchmark.py`; a test fails if the
-  stored `backend/app/data/benchmark.json` no longer matches the code.
-- **Google sign-in:** create a Google Cloud OAuth client (Web) with redirect URI
-  `https://<project-ref>.supabase.co/auth/v1/callback`, enable the Google provider in Supabase with its client ID and
-  secret, then set `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED=true` on the frontend and redeploy.
-
-## Testing
-
-- `backend/tests` — 157 tests (incl. the 12-step workflow, private-demo isolation and cleanup, developer-auth guard): hand-calculated ledger reconciliation across dashboard/report/exports, forecast edge
-  cases (leap day, negative balance, no data), exact shock arithmetic, alert evidence, CSV import (settlement,
-  duplicates, corrections, atomicity), cross-user isolation on 14 routes, AI routing/fallback/validation with mocked
-  HTTP, benchmark reproducibility, auth and module separation.
-- `frontend` — `npm test` (Vitest: money parsing/formatting, API failure handling), `npm run lint`, `npm run typecheck`, `npm run build`.
-- `scripts/e2e-journey.cjs` — headless Chrome through the 10-step demo journey.
-
-Results and what is still unverified: [docs/TESTING.md](docs/TESTING.md).
+Two Vercel projects (`backend/`, `frontend/`) and one Supabase project. For schema changes: apply
+`supabase/migrations/*` → deploy backend → deploy frontend. Rollback by promoting the previous Vercel deployment.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/ROLLBACK.md](docs/ROLLBACK.md).
 
 ## Known limitations
 
-- Forecasts are estimates from the user's own records, not guarantees; the benchmark is synthetic, not real-business data.
-- Receipt reading needs a Gemini key and consent, reads one document at a time, and has not been validated on a
-  set of real Pakistani receipts. Bank-statement PDFs are not supported (CSV only).
-- WhatsApp reminders open a pre-filled `wa.me` link; nothing is sent automatically.
-- Copilot uses curated templates unless an AI key is configured and the owner consents.
-- The demo is a single-currency (PKR) design; amounts in other currencies are flagged, not converted.
-- Enterprise multi-site, tax previews and credit profiles are not built; the enterprise workspace uses the SME modules.
-- AI quotas are per workspace per day; there is no per-minute application rate limit beyond the providers' own.
-- The forecast band covers everyday sales/spending noise only; measured coverage is 43% overall (31% for businesses
-  with open invoices). See [docs/FORECAST_METHODOLOGY.md](docs/FORECAST_METHODOLOGY.md).
-- Supabase free projects pause after a week of inactivity.
+- Forecasts are estimates. The forecast range covers everyday variation only (43% coverage on the synthetic
+  benchmark; lower when customers pay late).
+- The benchmark is synthetic; FinDost has not been evaluated with real businesses.
+- No bank feeds, bank reconciliation, ERP or payment integrations; FinDost never moves money.
+- Approval policy is basic (owners approve). Team features are enterprise-only; no ownership transfer.
+- Live AI answers and invitation email delivery are not covered by automated tests; receipt reading is not
+  validated on real receipts.
+- Tenant isolation is enforced in the API layer; per-tenant RLS policies are not yet added.
+- Single currency (PKR). Supabase free projects pause after a week of inactivity.
 
-See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the 5-minute demo.
+## Roadmap
+
+| Now (implemented) | Next (roadmap — not built) |
+|---|---|
+| Ledger, CSV/receipt import, forecast, alerts, simulator, recovery, budgets, goals, data checks, approvals, reports, Copilot, roles, workspace selection | Payment-timing uncertainty in forecasts · real-business pilot · bank feeds and reconciliation · ERP integrations · approval thresholds and chains · per-tenant RLS policies · team roles for SME · controlled execution of approved payments with human sign-off |
+
+## Documentation
+
+[Presentation guide](docs/PRESENTATION_GUIDE.md) · [Architecture](docs/ARCHITECTURE.md) ·
+[Forecast methodology](docs/FORECAST_METHODOLOGY.md) · [Security](docs/SECURITY.md) · [Testing](docs/TESTING.md) ·
+[Deployment](docs/DEPLOYMENT.md) · [Demo script](docs/DEMO_SCRIPT.md) · [Implementation report](docs/IMPLEMENTATION_REPORT.md)
+
+FinDost AI provides decision support, not financial advice. Demo data is fictional.

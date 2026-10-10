@@ -127,6 +127,65 @@ const stamp = Date.now();
   ok("mobile: no horizontal overflow", !overflow);
   ok("mobile: copilot launcher visible", await student.locator("button[aria-label='Open Copilot']").isVisible());
 
+  // ---------------- one login, two workspaces: the student is invited to the company as a viewer
+  const studEmail = `stud-${stamp}@uni.pk`;
+  await go(owner, "/team");
+  await owner.fill("#inv-email", studEmail);
+  await owner.selectOption("#inv-role", "viewer");
+  await owner.click("button:has-text('Send invitation')");
+  await owner.waitForFunction((e) => [...document.querySelectorAll("code")].some((c) => c.textContent.includes("/invite?token=")) && document.body.innerText.includes(e), studEmail, { timeout: 20000 });
+  const studLink = (await owner.locator("code").last().innerText()).replace(/^https?:\/\/[^/]+/, BASE);
+  await student.goto(studLink);
+  await student.waitForSelector("text=Accept and open the workspace", { timeout: 30000 });
+  await student.click("text=Accept and open the workspace");
+  await student.waitForURL(/dashboard/, { timeout: 60000 });
+  await student.waitForSelector("main h1");
+  const header = async (pg) => (await pg.locator("button[aria-label^='Workspace:']").getAttribute("aria-label")) || "";
+  ok("invited student opens the company as viewer", /My Company/.test(await header(student)) && /viewer/.test(await header(student)));
+  await student.click("button[aria-label^='Workspace:']");
+  const menu = await student.locator("[role=menu]").innerText();
+  ok("switcher lists own account and the company", /My Student Budget/.test(menu) && /My Company/.test(menu) && /your account/.test(menu));
+  await student.click("[role=menu] button:has-text('My Student Budget')");
+  await student.waitForFunction(() => /My Student Budget/.test(document.querySelector("header")?.textContent || ""), null, { timeout: 60000 });
+  await student.waitForSelector("main h1");
+  await student.waitForLoadState("networkidle").catch(() => {});
+  const ownMain = await main(student);
+  ok("switched to own account without signing out; no company data shown", !/My Company|Indus|Northline/.test(ownMain) && /owner/.test(await header(student)), /My Company|Indus|Northline/.exec(ownMain)?.[0] ?? "");
+  ok("own account kept its type after joining", /My Student Budget/.test(await header(student)) && (await student.locator("header").first().innerText()).toLowerCase().includes("student"));
+
+  // a new sign-in asks again instead of reopening the last workspace
+  await student.goto(BASE + "/workspaces");
+  await student.waitForSelector("text=Where would you like to work today?");
+  await student.click("button:has-text('Sign out')");
+  await student.waitForURL(/login/);
+  await student.fill("#dev-email", studEmail);
+  await student.selectOption("#dev-kind", "student");
+  await student.click("button[type=submit]");
+  await student.waitForURL(/workspaces/, { timeout: 60000 });
+  await student.waitForSelector("text=Shared with you", { timeout: 30000 });
+  const sel = await student.locator("main").innerText();
+  ok("selection screen after sign-in lists both, labelled", /Your account[\s\S]*My Student Budget/i.test(sel) && /Shared with you[\s\S]*My Company[\s\S]*Viewer/i.test(sel));
+  await student.click("main button:has-text('My Company')");
+  await student.waitForURL(/dashboard/, { timeout: 60000 });
+  await student.waitForSelector("main h1");
+  ok("chosen workspace opens", /My Company/.test(await header(student)));
+
+  // the owner removes the student: the next request sends them back to the selector
+  const studId = await student.evaluate(async () => {
+    const t = localStorage.getItem("findost_dev_token");
+    return (await (await fetch("/api/v1/me", { headers: { Authorization: "Bearer " + t } })).json()).user.id;
+  });
+  const removed = await owner.evaluate(async (uid) => {
+    const t = localStorage.getItem("findost_dev_token");
+    const sel = JSON.parse(localStorage.getItem("findost_workspace_selection") || "{}");
+    const r = await fetch(`/api/v1/team/members/${uid}`, { method: "DELETE", headers: { Authorization: "Bearer " + t, "X-Workspace-Id": sel.id } });
+    return r.status;
+  }, studId);
+  await student.goto(BASE + "/budget");
+  await student.waitForURL(/workspaces\?notice=no_access/, { timeout: 60000 });
+  await student.waitForSelector("text=You no longer have access", { timeout: 30000 });
+  ok("revoked member is sent back to the selector", removed === 204 && !/My Company/.test(await student.locator("main").innerText()));
+
   // ---------------- landing
   const visitor = await newPage("visitor");
   await visitor.goto(BASE + "/", { waitUntil: "load" });

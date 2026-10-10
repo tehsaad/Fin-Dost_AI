@@ -21,7 +21,19 @@
   audit log (`test_ledger.py`, `test_workflow.py`, `test_demo_security.py`).
 * Account type and module access come from the database row, never from the client.
 * Postgres RLS is enabled on all tables with **no policies**, so the public anon key cannot read or write data
-  through Supabase's REST API; only the backend's server-side connection can.
+  through Supabase's REST API; only the backend's server-side connection can. That connection uses a privileged
+  role, so **tenant isolation is enforced in the API layer** (`get_access` + `business_id` filters, tested), not by
+  per-tenant RLS policies. Adding per-workspace policies is roadmap defence in depth.
+
+## Workspace selection (identity ≠ workspace)
+
+* `GET /me` lists every workspace the signed-in user may open (own + active memberships) and reports
+  `workspace_denied` instead of silently falling back when the browser asks for a workspace the user may not open.
+* The browser stores the chosen workspace together with the sign-in session (`frontend/lib/workspace.ts`); a new
+  sign-in or another person on the same browser must choose again. Sign-out clears it. It is a preference only:
+  the server re-checks membership on every request.
+* Revoked members get 404 `workspace_not_found` on their next request and are returned to the selector.
+* Tested in `backend/tests/test_workspaces.py`, `frontend/lib/workspace.test.ts` and `scripts/e2e-enterprise.cjs`.
 
 ## Shared enterprise workspaces
 

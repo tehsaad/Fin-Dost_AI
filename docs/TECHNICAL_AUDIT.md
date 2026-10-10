@@ -1,5 +1,7 @@
 # FinDost AI — Technical Audit
 
+> Historical snapshot kept for the record. For the current product see [PRESENTATION_GUIDE.md](PRESENTATION_GUIDE.md).
+
 Audit date: 2026-10-10 · Commit audited: `cd4deec` (main) · Live: https://findostai.vercel.app
 
 Everything below was checked against the source code; defects marked **Reproduced** were confirmed with a

@@ -1,6 +1,7 @@
 "use client";
 
 import { getSupabase, supabaseConfigured } from "./supabase/client";
+import { browserStorage, clearSelection } from "./workspace";
 
 /** "dev" lets local development run without Supabase (tokens are minted by /api/dev-token). */
 export const authMode: "supabase" | "dev" =
@@ -32,6 +33,7 @@ export function setDevToken(token: string | null) {
 }
 
 export async function signOut() {
+  clearSelection(browserStorage()); // the next person (or the next sign-in) chooses again
   if (authMode === "dev") {
     setDevToken(null);
     return;

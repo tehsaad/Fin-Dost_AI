@@ -29,12 +29,20 @@ export interface Business {
   demo_expires_on: string | null;
 }
 
+export interface WorkspaceSummary {
+  id: string; name: string; kind: Kind; kind_label: string; city: string | null; role: Role;
+  is_own: boolean; is_demo: boolean; joined_at: string | null;
+}
+
 export interface Me {
   user: { id: string; email: string | null; name: string | null; is_anonymous: boolean };
   business: Business | null;
   role: Role | null;
   permissions: Permission[];
-  workspaces: { id: string; name: string; kind: Kind; role: Role }[];
+  workspaces: WorkspaceSummary[];
+  own_workspace_id: string | null;
+  /** The browser asked for a workspace this user may not open (never theirs, or access was removed). */
+  workspace_denied: boolean;
   needs_onboarding: boolean;
   suggested_kind: Kind | null;
   suggested_business_name: string | null;
