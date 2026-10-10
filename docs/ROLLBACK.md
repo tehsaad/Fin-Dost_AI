@@ -43,3 +43,14 @@ DELETE FROM supabase_migrations.schema_migrations WHERE version = '2026101300000
 ## Environment variables added by the upgrade
 
 `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL` on `findost-api`. The old backend ignores them; they can stay.
+
+## What went live (2026-10-10)
+
+| What | Value |
+|---|---|
+| Migration | `20261013000000_enterprise_workspaces` applied by the user; 5 tables, RLS on, recorded in `schema_migrations` |
+| Backend env | `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL` set on `findost-api` (production) |
+| Backend | deployment `dpl_J4qTH3YFBPyTZ5TC1XpGBotn29Jt` (findost-d5f54cn4k-teh-saad.vercel.app) |
+| Frontend | deployment findost-au9u6ejny-teh-saad.vercel.app |
+
+To undo, use the promote commands above.
