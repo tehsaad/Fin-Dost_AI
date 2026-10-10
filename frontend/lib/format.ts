@@ -21,12 +21,15 @@ export function formatScale(paisa: number): string {
   return `${sign}${rupees.toFixed(0)}`;
 }
 
+/** Parse a rupee amount typed by a user into integer paisa without floating-point maths.
+ * Accepts "1,25,000", "Rs. 500", "12.5"; rejects more than 2 decimals rather than silently truncating. */
 export function rupeesToPaisa(input: string | number): number | null {
   const clean = String(input).replace(/[,\s]/g, "").replace(/^rs\.?/i, "");
-  if (!clean || Number.isNaN(Number(clean))) return null;
-  const [whole, frac = ""] = clean.replace("-", "").split(".");
-  const paisa = Number(whole || "0") * 100 + Number((frac + "00").slice(0, 2));
-  return clean.startsWith("-") ? -paisa : paisa;
+  const m = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(clean) ?? /^(-?)()\.(\d{1,2})$/.exec(clean);
+  if (!m) return null;
+  const paisa = Number(m[2] || "0") * 100 + Number((m[3] ?? "").padEnd(2, "0") || "0");
+  if (!Number.isSafeInteger(paisa)) return null;
+  return m[1] === "-" ? -paisa : paisa;
 }
 
 export function formatDate(iso: string | null | undefined, style: "short" | "long" = "short"): string {

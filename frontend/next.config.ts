@@ -19,7 +19,6 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  eslint: { ignoreDuringBuilds: true },
   // Local dev against a distant database can exceed the default 30s proxy timeout.
   experimental: { proxyTimeout: Number(process.env.PROXY_TIMEOUT_MS) || 30_000 },
   async rewrites() {
