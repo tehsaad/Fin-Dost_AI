@@ -79,3 +79,14 @@ cd ../backend && npx vercel promote https://findost-rnlvn5erl-teh-saad.vercel.ap
 
 Database at this point: migrations up to `20261013000000_enterprise_workspaces` (later migrations, if any, must be
 additive so this backend keeps working).
+
+## Performance pass (2026-10-10, branch perf/faster-loading, commit 961d80c)
+
+Rollback point before it: tag `rollback/pre-performance-2026-10-10` (= main cc6d566). Deployed: backend
+findost-oij1earj0-teh-saad.vercel.app, frontend findost-3ngtrvrmu-teh-saad.vercel.app. No database change.
+To undo:
+
+```bash
+cd frontend && npx vercel promote https://findost-jsrk5lqyj-teh-saad.vercel.app --yes
+cd ../backend && npx vercel promote https://findost-q0fbmdss1-teh-saad.vercel.app --yes
+```
