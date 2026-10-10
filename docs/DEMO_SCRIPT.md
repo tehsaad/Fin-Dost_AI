@@ -32,6 +32,7 @@ below is the same on any day. If someone changed a demo account, use **Settings 
 - Optionally stack **Top 3 customers pay 30 days late**. Save the scenario.
 
 ## 3:15 – 4:00 · Recovery plan
+- Note: options are simulations — nothing is marked as collected or paid until you record it in the Khata.
 - Open **Recovery**: ranked actions generated from this shop's data — collect specific udhaar, ask for part payments,
   defer a supplier payment, cut discretionary spend, sell slow stock.
 - Each shows the cash effect and how it moves the shortage date; the combined plan removes the shortage.
@@ -42,11 +43,13 @@ below is the same on any day. If someone changed a demo account, use **Settings 
 - Ask **"Explain my dashboard in simple Urdu"** → Urdu summary with the exact same figures.
 
 ## 4:30 – 5:00 · Breadth and impact
-- **Import:** upload the messy sample CSV → dates, amounts and categories normalised, duplicates flagged.
+- **Import:** upload the messy sample CSV → dates, amounts and categories normalised, duplicates flagged; fix a
+  rejected row with the pencil, then import. **Reports → CSV** downloads the same figures shown on screen.
 - Sign out, sign in as **Student** → a smaller budget app with no inventory module; `/inventory` says it's not part
   of this account type.
-- **Impact:** on a held-out synthetic benchmark of 120 businesses, the forecast catches **96%** of upcoming shortages
-  (94% accuracy vs 83% for a naive rule) with about **8 days** of warning. Close on SDG 1, 8 and 9.
+- **Impact:** on a held-out synthetic benchmark of 120 businesses, the forecast catches **96%** of shortages within
+  14 days with about **8 days** of warning. A naive "cash minus bills" rule catches them all too, but wrongly warns
+  **31%** of healthy businesses; FinDost wrongly warns **8%**. Say clearly that the data is synthetic. Close on SDG 1, 8 and 9.
 
 ## Backup plan
 - If live login is slow, the API health check is https://findost-api.vercel.app/api/v1/health.

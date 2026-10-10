@@ -97,3 +97,26 @@ Postgres with 0 console errors / 0 failed API calls, and code reading:
 3. **P2** D13–D15 lint/tests, API_URL guard, runway; Gemini receipt extraction as reviewable proposals.
 
 See `IMPLEMENTATION_PLAN.md` for phases and acceptance criteria and `TEST_REPORT.md` for results.
+
+## 8. Status after this pass (2026-10-10)
+
+| ID | Status | Where |
+|---|---|---|
+| D1 | Fixed | `routers/ledger.py` update_transaction · `test_ledger.py` |
+| D2 | Fixed | `services/ingestion.Settler`, `routers/imports.confirm` · `test_import.py` |
+| D3 | Fixed | `include_duplicates` on confirm, Import page "anyway" · `test_import.py` |
+| D4 | Fixed | forecast `band` method + `band_available` · `test_forecast_scenarios.py` |
+| D5 | Fixed | `audit_events` table, `/audit`, change history UI · `test_ledger.py` |
+| D6 | Fixed (not load-tested) | `owned(..., lock=True)` on payments |
+| D7 | Fixed | `PUT /import/batches/{id}/rows/{n}`, row editor · `test_import.py` |
+| D8 | Fixed | `rent_increase` shock + preset · `test_forecast_scenarios.py` |
+| D9 | Fixed | report `period`, `generated_at`, CSV sections · `test_ledger.py` |
+| D10 | Fixed | benchmark v2 + stored JSON · `test_benchmark.py` |
+| D11 | Fixed (live calls unverified) | `services/ai` · `test_ai.py` |
+| D12 | Fixed | JSON 500 + request id; DB-backed AI quota · `test_ledger.py`, `test_ai.py` |
+| D13 | Fixed | ESLint + Vitest |
+| D14 | Fixed | `next.config.ts` build guard |
+| D15 | Fixed | `runway_days`, `runway_extrapolated_days` |
+
+Remaining risks: PostCSS advisory inside Next 15 build tooling (fix needs Next 16); AI providers not exercised
+live; no load test of concurrent payments; the benchmark is synthetic; enterprise features are not built.

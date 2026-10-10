@@ -27,3 +27,4 @@ venv/
 *.css.map
 *.sass.map
 *.scss.map
+e2e-shots/
