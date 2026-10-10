@@ -60,3 +60,22 @@ To undo, use the promote commands above.
 Backend findost-990gmmfhr-teh-saad.vercel.app, frontend findost-114czdxxv-teh-saad.vercel.app. No database change.
 To return to the enterprise release without this pass, promote findost-d5f54cn4k (backend) and findost-au9u6ejny
 (frontend); to return to before the enterprise upgrade, use the commands at the top.
+
+## Workspace selection (2026-10-10, main 24c14ac = PR #2)
+
+Backend findost-rnlvn5erl-teh-saad.vercel.app, frontend findost-jsrk5lqyj-teh-saad.vercel.app. No database change.
+To undo, promote the accuracy-pass deployments: backend findost-990gmmfhr, frontend findost-114czdxxv.
+
+### Rollback point: `rollback/workspace-selection-2026-10-10`
+
+Git tag on commit `24c14ac` (main after PR #2) — the state live on 2026-10-10 after the workspace-selection deploy.
+To return to it later (after future releases):
+
+```bash
+cd frontend && npx vercel promote https://findost-jsrk5lqyj-teh-saad.vercel.app --yes
+cd ../backend && npx vercel promote https://findost-rnlvn5erl-teh-saad.vercel.app --yes
+# code, only if main should follow:  git reset --hard rollback/workspace-selection-2026-10-10 (on a branch / via PR)
+```
+
+Database at this point: migrations up to `20261013000000_enterprise_workspaces` (later migrations, if any, must be
+additive so this backend keeps working).
