@@ -6,6 +6,7 @@ automated tests and local browser runs; nothing below was verified on production
 
 | Feature | Status | Evidence | Limitation |
 |---|---|---|---|
+| Workspace selection at each sign-in, switcher, session-bound choice, revoked-access handling (branch `feat/workspace-selection`) | IMPLEMENTED AND VERIFIED (locally) | `test_workspaces.py` (11), `workspace.test.ts` (9), e2e 26/26 | Not deployed yet; choice stored per browser (server decides access) |
 | Per-account-type navigation and wording | IMPLEMENTED AND VERIFIED | `nav-config.test.ts`, e2e student/enterprise nav | Wording of a few deep page sections (e.g. Khata tabs) is still shared |
 | Backend module enforcement per type | IMPLEMENTED AND VERIFIED | `test_modules_follow_the_account_type` (4 kinds) | — |
 | Student/household personal finance (budget, goals, personal scenarios, spending-adjustment wording) | IMPLEMENTED AND VERIFIED | budget/goal/preset tests, e2e | Savings "saved" amount is entered by the user, not tracked from accounts |

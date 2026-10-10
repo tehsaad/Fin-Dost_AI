@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Activity, LogOut, Menu, Settings, X } from "lucide-react";
+import { Activity, LayoutGrid, LogOut, Menu, Settings, X } from "lucide-react";
 import { useApp } from "./app-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/auth";
@@ -13,6 +13,7 @@ import { FloatingCopilot } from "@/components/copilot/floating";
 import { Logo } from "@/components/logo";
 
 import { navGroups } from "./nav-config";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 
 /** Every route that belongs to a module, so direct URLs to modules outside the account type are blocked. */
 const PATH_FEATURE: Record<string, Feature> = {
@@ -87,7 +88,7 @@ function ModuleGuard({ children }: { children: React.ReactNode }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { business, me, role, can, switchWorkspace } = useApp();
+  const { business, me, role, can } = useApp();
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -109,6 +110,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/settings" className={cn("flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/70", pathname === "/settings" && "bg-slate-100 dark:bg-slate-800")}>
             <Settings className="h-4 w-4 text-slate-400" /> Settings
           </Link>
+          <Link href="/workspaces" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/70">
+            <LayoutGrid className="h-4 w-4 text-slate-400" /> Switch workspace
+          </Link>
           <button onClick={logout} className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/70">
             <LogOut className="h-4 w-4 text-slate-400" /> Sign out
           </button>
@@ -126,6 +130,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex-1 overflow-y-auto"><NavList onNavigate={() => setOpen(false)} /></div>
             <div className="border-t border-slate-100 p-3 dark:border-slate-800">
               <Link href="/settings" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-600 dark:text-slate-400"><Settings className="h-4 w-4" /> Settings</Link>
+              <Link href="/workspaces" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-600 dark:text-slate-400"><LayoutGrid className="h-4 w-4" /> Switch workspace</Link>
               <button onClick={logout} className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-600 dark:text-slate-400"><LogOut className="h-4 w-4" /> Sign out</button>
             </div>
           </div>
@@ -154,19 +159,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </span>
                 )}
               </div>
-              <p className="hidden truncate text-[11px] text-slate-500 sm:block">{business.kind_label}{business.city ? ` · ${business.city}` : ""} · PKR{me.workspaces.length > 1 || role !== "owner" ? ` · your role: ${role}` : ""}</p>
+              <p className="hidden truncate text-[11px] text-slate-500 sm:block">{business.kind_label}{business.city ? ` · ${business.city}` : ""} · PKR · your role: {role}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {me.workspaces.length > 1 && (
-              <label className="hidden items-center gap-1.5 text-[11px] text-slate-500 sm:flex">
-                <span className="sr-only">Switch workspace</span>
-                <select value={business.id} onChange={(e) => switchWorkspace(e.target.value)}
-                  className="max-w-[12rem] rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                  {me.workspaces.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.role})</option>)}
-                </select>
-              </label>
-            )}
+            <WorkspaceSwitcher />
             <span className="hidden items-center gap-1.5 text-[11px] text-slate-500 md:flex"><Activity className="h-3.5 w-3.5 text-brand-600" /> {me.user.email ?? "Signed in"}</span>
             <ThemeToggle />
           </div>

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { captchaEnabled, Turnstile } from "@/components/auth/turnstile";
 import { Notice, Spinner } from "@/components/shared/feedback";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, enterWorkspace } from "@/lib/api";
 import { DEMO_PERSONAS } from "@/lib/demo-accounts";
 import { getSupabase } from "@/lib/supabase/client";
 import type { Kind } from "@/lib/types";
@@ -33,15 +33,16 @@ export function PrivateDemo() {
       return setError(err.message);
     }
     try {
-      await api("/onboarding", { body: { kind, business_name: name, load_demo: true } });
+      // Choosing a demo persona is the explicit workspace choice for this new session.
+      const r = await api<{ business: { id: string } }>("/onboarding", { body: { kind, business_name: name, load_demo: true } });
+      await enterWorkspace(r.business.id, "/dashboard");
     } catch (e) {
       if (!(e instanceof ApiError && e.code === "already_onboarded")) {
         setBusy(null);
         return setError(e instanceof Error ? e.message : "Could not open the demo.");
       }
+      router.replace("/workspaces");
     }
-    router.replace("/dashboard");
-    router.refresh();
   };
 
   return (

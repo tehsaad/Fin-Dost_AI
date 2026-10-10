@@ -70,6 +70,10 @@ Every figure comes from the engine. AI off, unavailable, failing or over the dai
 
 ## Shared workspaces and roles (`auth.get_access`)
 
+* Identity (Supabase user) and workspace are separate. After each sign-in the app shows `/workspaces` and the user
+  picks a workspace; the choice is bound to the session (`frontend/lib/workspace.ts`) and sent as
+  `X-Workspace-Id`. Switching reloads the app so no data from the previous workspace remains in memory.
+
 * A request's workspace is the user's own, or one they are an **active member** of, chosen with the
   `X-Workspace-Id` header. The header is only honoured after a membership check; anything else → 404.
 * Roles: **owner** (all, incl. approvals, team, settings), **editor** (records, imports, reports, propose actions),

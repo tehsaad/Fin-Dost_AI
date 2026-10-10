@@ -50,7 +50,9 @@ Every shock, what-if and recovery action edits a *copy* of the forecast componen
 projection; the ledger is never modified (tested). Types: sales decline, delayed payment, supplier price increase,
 unexpected expense, utility increase, rent increase, business interruption, flood, customer loss; what-ifs that move
 invoices/bills or change sales/opex/purchases; recovery actions (collect receivables, part payments, defer bills,
-cut discretionary spend, delay purchases, clearance sale, cash injection). Exact arithmetic is asserted in tests.
+cut discretionary spend, buy less non-essential stock for a period, clearance sale, cash injection). A bill deferred
+past the forecast window is kept on the window's last day, so paying later is never shown as money saved. Exact
+arithmetic is asserted in tests.
 
 ## 4. Benchmark (synthetic, held-out) — `benchmark-v3`
 

@@ -12,6 +12,17 @@ node scripts/e2e-journey.cjs                        # browser journey (see heade
 npx lighthouse http://localhost:3001/ --only-categories=seo,accessibility,best-practices,performance
 ```
 
+## Results (workspace selection, branch `feat/workspace-selection`)
+
+| Check | Result |
+|---|---|
+| Backend pytest | **168 passed** (adds `test_workspaces.py`: 11 tests, `test_public_claims.py`: 2) |
+| Frontend Vitest | **28 passed** (adds `lib/workspace.test.ts`: 9) |
+| `tsc --noEmit`, ESLint | pass, 0 findings |
+| Production build | pass |
+| `scripts/e2e-enterprise.cjs` | **26/26** (adds: invited student opens company as viewer; switcher lists both; switch to own account shows no company data; own type kept; new sign-in shows the selector with both; revoked member returned to the selector) |
+| `scripts/e2e-journey.cjs` | 15/15, 0 issues |
+
 ## Results (enterprise upgrade, branch `feat/enterprise-workflow-upgrade`)
 
 | Check | Result |

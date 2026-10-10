@@ -1,6 +1,7 @@
 "use client";
 
 import { getAccessToken } from "./auth";
+import { browserStorage, clearSelection, readSelection, safeAppPath, sessionKeyFromToken, writeSelection } from "./workspace";
 
 export class ApiError extends Error {
   status: number;
@@ -16,24 +17,24 @@ export class ApiError extends Error {
 
 type Options = { method?: string; body?: unknown; form?: FormData; signal?: AbortSignal };
 
-const WORKSPACE_KEY = "findost_workspace";
-
-/** The workspace the user picked (shared enterprise workspaces). The server only honours it for members. */
-export function getWorkspaceId(): string | null {
-  try {
-    return typeof window === "undefined" ? null : window.localStorage.getItem(WORKSPACE_KEY);
-  } catch {
-    return null;
-  }
+/** The workspace chosen in this sign-in session (see lib/workspace.ts). The server only honours it for members. */
+export async function getSelectedWorkspace(): Promise<string | null> {
+  return readSelection(browserStorage(), sessionKeyFromToken(await getAccessToken()));
 }
 
-export function setWorkspaceId(id: string | null) {
-  try {
-    if (id) window.localStorage.setItem(WORKSPACE_KEY, id);
-    else window.localStorage.removeItem(WORKSPACE_KEY);
-  } catch {
-    /* storage unavailable: the server falls back to the user's own workspace */
-  }
+/**
+ * Open a workspace. Records the choice for this session, then reloads the app at `next`: the reload drops every
+ * in-memory record, chart, Copilot conversation and in-flight request of the previous workspace, so nothing from it
+ * can appear while the new one loads. The sign-in session itself is kept (no logout).
+ */
+export async function enterWorkspace(id: string, next = "/dashboard") {
+  const ok = writeSelection(browserStorage(), sessionKeyFromToken(await getAccessToken()), id);
+  window.location.assign(ok ? safeAppPath(next) : "/login");
+}
+
+/** Forget the choice (e.g. access was revoked) so the selection screen is shown again. */
+export function forgetSelectedWorkspace() {
+  clearSelection(browserStorage());
 }
 
 /** Auth + workspace headers for every API call (also used by downloads and the Copilot stream). */
@@ -41,7 +42,7 @@ export async function authHeaders(): Promise<Record<string, string>> {
   const token = await getAccessToken();
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  const ws = getWorkspaceId();
+  const ws = readSelection(browserStorage(), sessionKeyFromToken(token));
   if (ws) headers["X-Workspace-Id"] = ws;
   return headers;
 }
@@ -75,6 +76,8 @@ export async function api<T = unknown>(path: string, opts: Options = {}): Promis
     if (typeof window !== "undefined") {
       if (res.status === 401) window.dispatchEvent(new CustomEvent("findost:unauthorized"));
       if (apiErr.code === "onboarding_required") window.dispatchEvent(new CustomEvent("findost:onboarding"));
+      // access to the open workspace was removed while it was in use: go back to the selection screen
+      if (apiErr.code === "workspace_not_found") window.dispatchEvent(new CustomEvent("findost:workspace_lost"));
     }
     throw apiErr;
   }

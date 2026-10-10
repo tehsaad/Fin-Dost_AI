@@ -15,7 +15,7 @@ import { getSupabase, supabaseConfigured } from "@/lib/supabase/client";
 import { PrivateDemo } from "@/components/auth/private-demo";
 
 function safeNext(n: string | null) {
-  return n && n.startsWith("/") && !n.startsWith("//") ? n : "/dashboard";
+  return n && n.startsWith("/") && !n.startsWith("//") ? n : "/workspaces";
 }
 
 function DevLogin({ next }: { next: string }) {

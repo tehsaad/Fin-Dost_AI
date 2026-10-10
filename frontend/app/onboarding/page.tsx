@@ -2,17 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, CheckCircle2, GraduationCap, Home, Store } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
+import { KIND_ICONS as ICONS } from "@/components/app/kind-icons";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { Button } from "@/components/shared/button";
 import { Field, Input, Toggle } from "@/components/shared/form";
 import { Notice, Spinner } from "@/components/shared/feedback";
-import { api, ApiError, errorMessage } from "@/lib/api";
+import { api, ApiError, enterWorkspace, errorMessage } from "@/lib/api";
 import { cn } from "@/lib/format";
 import { KIND_INFO } from "@/lib/demo-accounts";
 import type { Kind, Me } from "@/lib/types";
 
-const ICONS: Record<Kind, React.ElementType> = { sme: Store, enterprise: Building2, household: Home, student: GraduationCap };
 const DEFAULT_NAMES: Record<Kind, string> = { sme: "My Shop", enterprise: "My Company", household: "My Household", student: "My Student Budget" };
 
 export default function OnboardingPage() {
@@ -27,7 +27,8 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     api<Me>("/me").then((m) => {
-      if (!m.needs_onboarding) return router.replace("/dashboard");
+      // Someone who only belongs to shared workspaces may still create their own account here.
+      if (m.own_workspace_id) return router.replace("/workspaces");
       let pendingKind: string | null = null;
       let pendingName: string | null = null;
       try {
@@ -49,11 +50,11 @@ export default function OnboardingPage() {
     setBusy(true);
     setError(null);
     try {
-      await api("/onboarding", { body: { kind, business_name: name.trim() || DEFAULT_NAMES[kind], city: city.trim() || null, load_demo: demo } });
+      const r = await api<{ business: { id: string } }>("/onboarding", { body: { kind, business_name: name.trim() || DEFAULT_NAMES[kind], city: city.trim() || null, load_demo: demo } });
       try { localStorage.removeItem("findost_pending_kind"); localStorage.removeItem("findost_pending_name"); } catch { /* ignore */ }
-      router.replace("/dashboard");
+      await enterWorkspace(r.business.id, "/dashboard");
     } catch (err) {
-      if (err instanceof ApiError && err.code === "already_onboarded") return router.replace("/dashboard");
+      if (err instanceof ApiError && err.code === "already_onboarded") return router.replace("/workspaces");
       setError(errorMessage(err));
       setBusy(false);
     }

@@ -14,7 +14,7 @@ from ..config import get_settings
 from ..config import today as get_today
 from ..db import get_db
 from ..errors import ApiError
-from ..models import Business
+from ..models import Business, WorkspaceMember
 from ..schemas import AccountSettingsIn, BusinessUpdate, OnboardingIn
 from ..services import audit
 from ..services.i18n import GLOSSARY
@@ -49,14 +49,23 @@ def business_dict(b: Business) -> dict:
 @router.get("/me")
 def me(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db),
        x_workspace_id: str | None = Header(default=None)):
+    """Who is signed in, and every workspace they may open. The identity (Supabase user) and the active workspace
+    are separate: a user may own one workspace and be a member of others. A workspace id from the browser is only
+    honoured for its owner or an active member; otherwise ``workspace_denied`` is true and no workspace is returned,
+    so the app asks the user to choose again instead of silently opening a different one."""
     options = memberships(db, user.id)
+    requested = (x_workspace_id or "").strip()[:36] or None
+    denied = False
     try:
-        access = resolve_access(db, user, (x_workspace_id or "").strip()[:36] or None)
-    except ApiError:  # a stale/foreign workspace id from the browser: fall back to the default workspace
-        access = resolve_access(db, user, None)
+        access = resolve_access(db, user, requested)
+    except ApiError:  # revoked membership, or an id that was never this user's
+        access, denied = None, True
     business = access.business if access else None
-    if business is not None and access.role == "owner":
+    if business is not None and access.role == "owner" and business.owner_id == user.id:
         rebase_demo_dates(db, business)
+    joined = {m.business_id: m.created_at for m in db.scalars(
+        select(WorkspaceMember).where(WorkspaceMember.user_id == user.id, WorkspaceMember.status == "active"))}
+    own = next((b for b, _ in options if b.owner_id == user.id), None)
     suggested = user.metadata.get("account_type")
     return {
         "user": {"id": user.id, "email": user.email, "name": user.metadata.get("full_name") or user.metadata.get("name"),
@@ -64,8 +73,13 @@ def me(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_
         "business": business_dict(business) if business else None,
         "role": access.role if access else None,
         "permissions": sorted(PERMISSIONS.get(access.role, ())) if access else [],
-        "workspaces": [{"id": b.id, "name": b.name, "kind": b.kind, "role": r} for b, r in options],
-        "needs_onboarding": business is None,
+        "workspaces": [{"id": b.id, "name": b.name, "kind": b.kind, "kind_label": KIND_LABELS[b.kind], "city": b.city,
+                        "role": r, "is_own": b.owner_id == user.id, "is_demo": b.is_demo,
+                        "joined_at": joined[b.id].isoformat() if b.id in joined and joined[b.id] else None}
+                       for b, r in options],
+        "own_workspace_id": own.id if own else None,
+        "workspace_denied": denied,
+        "needs_onboarding": not options,
         "suggested_kind": suggested if suggested in FEATURES else None,
         "suggested_business_name": user.metadata.get("business_name"),
     }

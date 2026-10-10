@@ -1,5 +1,7 @@
 # FinDost AI — Baseline Audit (pass 2)
 
+> Historical snapshot kept for the record. For the current product see [PRESENTATION_GUIDE.md](PRESENTATION_GUIDE.md).
+
 Date: 2026-10-10 · Baseline commit: `05ac45a` (deployed to production earlier the same day) ·
 Earlier pass: [TECHNICAL_AUDIT.md](TECHNICAL_AUDIT.md) (defects D1–D15, all fixed).
 

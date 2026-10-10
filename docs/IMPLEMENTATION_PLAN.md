@@ -1,5 +1,7 @@
 # FinDost AI — Implementation Plan
 
+> Historical snapshot kept for the record. For the current product see [PRESENTATION_GUIDE.md](PRESENTATION_GUIDE.md).
+
 Defect IDs refer to `TECHNICAL_AUDIT.md`. Each phase ends with the backend test suite, frontend typecheck and
 (from Phase 9) lint and build. Nothing is deployed and no production migration is applied without the owner's
 explicit go-ahead; new tables are additive.

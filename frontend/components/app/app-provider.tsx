@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { api, ApiError, getWorkspaceId, setWorkspaceId } from "@/lib/api";
+import { api, ApiError, enterWorkspace, forgetSelectedWorkspace, getSelectedWorkspace } from "@/lib/api";
 import type { Business, Feature, Me, Permission, Role } from "@/lib/types";
 import { Spinner } from "@/components/shared/feedback";
 
@@ -26,19 +26,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    const here = pathname + (typeof window === "undefined" ? "" : window.location.search);
     try {
+      const selected = await getSelectedWorkspace();
       const m = await api<Me>("/me");
-      if (m.needs_onboarding || !m.business) {
-        setWorkspaceId(null);
+      if (m.needs_onboarding) {  // no workspace of any kind yet: create one
+        forgetSelectedWorkspace();
         router.replace("/onboarding");
         return;
       }
-      // Keep the stored workspace in step with what the server resolved (e.g. after access was removed).
-      if (getWorkspaceId() !== m.business.id) setWorkspaceId(m.business.id);
+      if (m.workspace_denied) {  // revoked membership or an id that was never this user's
+        forgetSelectedWorkspace();
+        router.replace(`/workspaces?notice=no_access&next=${encodeURIComponent(here)}`);
+        return;
+      }
+      if (!selected || !m.business || m.business.id !== selected) {  // not chosen yet in this sign-in session
+        router.replace(`/workspaces?next=${encodeURIComponent(here)}`);
+        return;
+      }
       setMe(m);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+        router.replace(`/login?next=${encodeURIComponent(here)}`);
         return;
       }
       setError((e as Error).message);
@@ -53,9 +62,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const onUnauthorized = () => router.replace("/login");
     const onOnboarding = () => router.replace("/onboarding");
+    const onWorkspaceLost = () => { forgetSelectedWorkspace(); router.replace("/workspaces?notice=no_access"); };
     window.addEventListener("findost:unauthorized", onUnauthorized);
     window.addEventListener("findost:onboarding", onOnboarding);
+    window.addEventListener("findost:workspace_lost", onWorkspaceLost);
     return () => {
+      window.removeEventListener("findost:workspace_lost", onWorkspaceLost);
       window.removeEventListener("findost:unauthorized", onUnauthorized);
       window.removeEventListener("findost:onboarding", onOnboarding);
     };
@@ -85,7 +97,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       me, business, role: me.role ?? "owner", refresh: load,
       has: (f) => business.features.includes(f),
       can: (p) => me.permissions.includes(p),
-      switchWorkspace: (id) => { setWorkspaceId(id); window.location.assign("/dashboard"); },
+      switchWorkspace: (id) => { void enterWorkspace(id, "/dashboard"); },
     }}>
       {children}
     </Ctx.Provider>

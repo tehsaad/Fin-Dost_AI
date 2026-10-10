@@ -6,7 +6,7 @@ import { Spinner } from "@/components/shared/feedback";
 
 export const googleEnabled = process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED !== "false";
 
-export function GoogleButton({ next = "/dashboard", label = "Continue with Google", onError }: { next?: string; label?: string; onError: (m: string) => void }) {
+export function GoogleButton({ next = "/workspaces", label = "Continue with Google", onError }: { next?: string; label?: string; onError: (m: string) => void }) {
   const [busy, setBusy] = useState(false);
   const go = async () => {
     const supabase = getSupabase();

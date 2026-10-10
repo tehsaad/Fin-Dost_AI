@@ -50,8 +50,9 @@ export default function TeamPage() {
   const act = (p: Promise<unknown>) => p.then(reload).catch((e) => setResult({ tone: "danger", text: errorMessage(e) }));
   const leave = async (m: Member) => {
     await api(`/team/members/${m.user_id}`, { method: "DELETE" }).catch((e) => setResult({ tone: "danger", text: errorMessage(e) }));
-    const own = me.workspaces.find((w) => w.role === "owner");
-    switchWorkspace(own?.id ?? "");
+    const own = me.workspaces.find((w) => w.is_own);
+    if (own) switchWorkspace(own.id);
+    else window.location.assign("/workspaces");
   };
 
   return (
