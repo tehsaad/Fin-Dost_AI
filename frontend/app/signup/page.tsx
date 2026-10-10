@@ -32,6 +32,20 @@ function SignupInner() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
+  const [resent, setResent] = useState(false);
+
+  const resend = async () => {
+    setError(null);
+    if (captchaEnabled && !captcha) return setError("Complete the security check first.");
+    setBusy(true);
+    const { error: err } = (await getSupabase()?.auth.resend({ type: "signup", email: email.trim(),
+      options: { captchaToken: captcha ?? undefined, emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding` } }))
+      ?? { error: new Error("Sign-up is not configured.") };
+    setBusy(false);
+    setReset((r) => r + 1);
+    if (err) return setError(err.message);
+    setResent(true);
+  };
 
   const rememberChoice = () => {
     try {
@@ -63,7 +77,10 @@ function SignupInner() {
       return setError(err.message);
     }
     if (data.session) router.replace("/onboarding");
-    else setSent(true);
+    else {
+      setReset((r) => r + 1);  // the token was used by sign-up; resend needs a fresh one
+      setSent(true);
+    }
   };
 
   if (sent) {
@@ -71,7 +88,13 @@ function SignupInner() {
       <AuthLayout title="Check your email" subtitle="One more step">
         <div className="flex flex-col items-center rounded-lg border border-slate-200 p-8 text-center dark:border-slate-800">
           <MailCheck className="h-10 w-10 text-brand-600" />
-          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">We sent a confirmation link to <strong>{email}</strong>. Open it to activate your {KIND_INFO[kind].title.toLowerCase()} workspace.</p>
+          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">We sent a confirmation link to <strong>{email}</strong> from no-reply@tehsaad.site. Open it to activate your {KIND_INFO[kind].title.toLowerCase()} workspace. Check spam if it is not there in a minute.</p>
+          <div className="mt-4 w-full space-y-2 text-left">
+            <Turnstile onToken={setCaptcha} resetSignal={reset} action="resend" />
+            {error && <Notice tone="danger">{error}</Notice>}
+            {resent && <Notice tone="success">Sent again. Links expire after 24 hours.</Notice>}
+            <Button type="button" variant="outline" className="w-full" disabled={busy} onClick={resend}>{busy && <Spinner />}Resend the email</Button>
+          </div>
           <Link href="/login" className="mt-4 text-sm font-medium text-brand-700 hover:underline">Back to sign in</Link>
         </div>
       </AuthLayout>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { KeyRound, Terminal } from "lucide-react";
+import { Terminal } from "lucide-react";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { captchaEnabled, Turnstile } from "@/components/auth/turnstile";
 import { GoogleButton, googleEnabled } from "@/components/auth/google-button";
@@ -12,7 +12,7 @@ import { Field, Input, Select } from "@/components/shared/form";
 import { Notice, Spinner } from "@/components/shared/feedback";
 import { authMode, setDevToken } from "@/lib/auth";
 import { getSupabase, supabaseConfigured } from "@/lib/supabase/client";
-import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@/lib/demo-accounts";
+import { PrivateDemo } from "@/components/auth/private-demo";
 
 function safeNext(n: string | null) {
   return n && n.startsWith("/") && !n.startsWith("//") ? n : "/dashboard";
@@ -53,6 +53,19 @@ function LoginInner() {
   const [reset, setReset] = useState(0);
   const [error, setError] = useState<string | null>(params.get("error"));
   const [busy, setBusy] = useState(false);
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const [resent, setResent] = useState(false);
+
+  const resend = async () => {
+    if (captchaEnabled && !captcha) return setError("Complete the security check, then press resend.");
+    const { error: err } = (await getSupabase()?.auth.resend({ type: "signup", email: email.trim(),
+      options: { captchaToken: captcha ?? undefined, emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding` } }))
+      ?? { error: new Error("Sign-in is not configured.") };
+    setReset((r) => r + 1);
+    if (err) return setError(err.message);
+    setResent(true);
+    setError(null);
+  };
 
   useEffect(() => {
     if (authMode !== "supabase") return;
@@ -70,7 +83,10 @@ function LoginInner() {
     setBusy(false);
     if (err) {
       setReset((r) => r + 1);
-      setError(err.message === "Invalid login credentials" ? "Email or password is incorrect." : err.message);
+      const notConfirmed = /not confirmed/i.test(err.message);
+      setUnconfirmed(notConfirmed);
+      setError(err.message === "Invalid login credentials" ? "Email or password is incorrect."
+        : notConfirmed ? "Please confirm your email first: open the link we sent you." : err.message);
       return;
     }
     router.replace(next);
@@ -94,22 +110,13 @@ function LoginInner() {
             <Field label="Password" htmlFor="password"><Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
             <Turnstile onToken={setCaptcha} resetSignal={reset} action="login" />
             {error && <Notice tone="danger">{error}</Notice>}
+            {unconfirmed && !resent && <Button type="button" variant="outline" className="w-full" onClick={resend}>Resend confirmation email</Button>}
+            {resent && <Notice tone="success">Confirmation email sent to {email}. Check your inbox and spam folder.</Notice>}
             <Button type="submit" className="w-full" size="lg" disabled={busy}>{busy && <Spinner />}Sign in</Button>
+            <p className="text-right text-xs"><Link href="/forgot-password" className="text-slate-500 hover:text-brand-700 hover:underline">Forgot password?</Link></p>
           </form>
           <p className="text-center text-sm text-slate-500">New to FinDost? <Link href="/signup" className="font-medium text-brand-700 hover:underline dark:text-brand-400">Create an account</Link></p>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-            <p className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300"><KeyRound className="h-4 w-4 text-brand-600" /> Try a demo account (fictional data)</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {DEMO_ACCOUNTS.map((d) => (
-                <button key={d.email} type="button" onClick={() => { setEmail(d.email); setPassword(DEMO_PASSWORD); }}
-                  className="rounded-md border border-slate-200 bg-white p-2 text-left transition hover:border-brand-400 dark:border-slate-700 dark:bg-slate-950">
-                  <span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">{d.label}</span>
-                  <span className="block text-[10px] text-slate-500">{d.who}</span>
-                </button>
-              ))}
-            </div>
-            <p className="mt-2 text-[10px] text-slate-500">Click one to fill the form, complete the security check, then sign in.</p>
-          </div>
+          <PrivateDemo />
         </div>
       )}
     </AuthLayout>

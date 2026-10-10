@@ -11,6 +11,7 @@ import { Field, Input, Select, Toggle } from "@/components/shared/form";
 import { Notice, Spinner } from "@/components/shared/feedback";
 import { Modal } from "@/components/shared/modal";
 import { AiStatusPanel } from "@/components/app/ai-status";
+import { AccountSecurity } from "@/components/app/account-security";
 import { api, errorMessage } from "@/lib/api";
 import { signOut } from "@/lib/auth";
 import { rupeesToPaisa } from "@/lib/format";
@@ -85,7 +86,8 @@ export default function SettingsPage() {
             <AiStatusPanel />
           </Card>
           <Card title="Account">
-            <p className="text-xs text-slate-500">Signed in as <strong className="text-slate-700 dark:text-slate-300">{me.user.email ?? me.user.id}</strong></p>
+            <p className="text-xs text-slate-500">Signed in as <strong className="text-slate-700 dark:text-slate-300">{me.user.is_anonymous ? "private demo visitor" : me.user.email ?? me.user.id}</strong></p>
+            <AccountSecurity isAnonymous={business.is_anonymous} expiresOn={business.demo_expires_on} />
             <Button type="button" variant="outline" className="mt-3 w-full" onClick={async () => { await signOut(); router.replace("/login"); }}><LogOut className="h-4 w-4" /> Sign out</Button>
           </Card>
         </div>

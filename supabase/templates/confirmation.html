@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;background:#f8fafc;font-family:Inter,Segoe UI,Arial,sans-serif;color:#0f172a">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:32px">
+          <tr><td>
+            <p style="margin:0 0 4px;font-size:13px;font-weight:700;letter-spacing:.08em;color:#059669;text-transform:uppercase">FinDost AI</p>
+            <h1 style="margin:0 0 12px;font-size:22px">Confirm your email</h1>
+            <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#334155">Welcome to FinDost AI. Confirm <strong>{{ .Email }}</strong> to activate your workspace.</p>
+            <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=signup&amp;next=/onboarding" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:8px">Confirm email</a>
+            <p style="margin:24px 0 0;font-size:12px;line-height:1.6;color:#64748b">This link expires in 24 hours. If you did not sign up for FinDost AI, you can ignore this email.</p>
+            <p style="margin:16px 0 0;font-size:12px;color:#94a3b8">If the button does not work, copy this link into your browser:<br><span style="word-break:break-all">{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=signup&amp;next=/onboarding</span></p>
+          </td></tr>
+        </table>
+        <p style="margin:16px 0 0;font-size:11px;color:#94a3b8">FinDost AI · cash-flow early warning for Pakistani shops, households and students</p>
+      </td></tr>
+    </table>
+  </body>
+</html>

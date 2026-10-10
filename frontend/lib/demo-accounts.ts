@@ -1,13 +1,12 @@
 import type { Kind } from "./types";
 
-/** Shared demo logins (fictional data). Anyone can sign in; "Reset demo data" restores them. */
-export const DEMO_PASSWORD = process.env.NEXT_PUBLIC_DEMO_PASSWORD || "FinDost-Demo-2026";
-
-export const DEMO_ACCOUNTS: { kind: Kind; email: string; label: string; who: string }[] = [
-  { kind: "sme", email: "sme@demo.findost.app", label: "Small business", who: "Bilal General Store, Lahore" },
-  { kind: "enterprise", email: "enterprise@demo.findost.app", label: "Enterprise", who: "Indus Textiles, Faisalabad" },
-  { kind: "household", email: "household@demo.findost.app", label: "Household", who: "Khan family, Lahore" },
-  { kind: "student", email: "student@demo.findost.app", label: "Student", who: "Ayesha, Islamabad" },
+/** Fictional personas for private demo workspaces. Each visitor gets their own copy (anonymous sign-in);
+ * nothing is shared between visitors, so one person's reset or edits never affect another. */
+export const DEMO_PERSONAS: { kind: Kind; label: string; who: string; name: string }[] = [
+  { kind: "sme", label: "Small business", who: "Kiryana store, Lahore", name: "Bilal General Store" },
+  { kind: "enterprise", label: "Enterprise", who: "Textile firm, Faisalabad", name: "Indus Textiles Ltd." },
+  { kind: "household", label: "Household", who: "Family budget, Lahore", name: "Khan Family Household" },
+  { kind: "student", label: "Student", who: "University student, Islamabad", name: "Ayesha's Student Budget" },
 ];
 
 export const KIND_INFO: Record<Kind, { title: string; urdu: string; blurb: string; modules: string }> = {

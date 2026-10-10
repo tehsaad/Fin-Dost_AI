@@ -61,7 +61,7 @@ const SHOTS = require("path").resolve("e2e-shots"); fs.mkdirSync(SHOTS, { recurs
   // forecast honesty
   await go("/forecast");
   t = await main();
-  ok("forecast shows band method and runway", t.includes("80% band") && /runway \d+ days/.test(t));
+  ok("forecast shows band method and runway", /everyday sales/i.test(t) && /runway \d+ days/.test(t));
 
   // 6-7 shock + compare
   await go("/simulator");

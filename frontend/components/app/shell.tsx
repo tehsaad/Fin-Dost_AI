@@ -171,6 +171,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{business.name}</span>
                 <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase", KIND_STYLE[business.kind])}>{business.kind}</span>
+                {business.is_anonymous && (
+                  <span title={business.demo_expires_on ? `Only you can see this workspace. Deleted on ${business.demo_expires_on} unless you keep it in Settings.` : "Private demo"}
+                    className="rounded border border-blue-300 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
+                    Private demo
+                  </span>
+                )}
                 {business.is_demo && (
                   <span title="All records in this workspace are fictional demo data" className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
                     Synthetic demo data

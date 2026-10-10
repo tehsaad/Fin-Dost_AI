@@ -22,10 +22,12 @@ export interface Business {
   language: "en" | "ur";
   recovery_weights: Record<string, number>;
   features: Feature[];
+  is_anonymous: boolean;
+  demo_expires_on: string | null;
 }
 
 export interface Me {
-  user: { id: string; email: string | null; name: string | null };
+  user: { id: string; email: string | null; name: string | null; is_anonymous: boolean };
   business: Business | null;
   needs_onboarding: boolean;
   suggested_kind: Kind | null;

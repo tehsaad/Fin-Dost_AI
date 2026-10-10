@@ -7,7 +7,7 @@ export function Logo({ className = "", light = false }: { className?: string; li
         <circle cx="50" cy="20" r="4" fill="#fff" />
       </svg>
       <span className={`text-base font-bold tracking-tight ${light ? "text-white" : "text-slate-900 dark:text-white"}`}>
-        FinDost <span className="text-brand-600 dark:text-brand-400">AI</span>
+        FinDost <span className="text-brand-700 dark:text-brand-400">AI</span>
       </span>
     </span>
   );
