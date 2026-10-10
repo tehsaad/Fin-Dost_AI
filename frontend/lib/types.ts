@@ -361,6 +361,20 @@ export interface CopilotAnswer {
   context?: CopilotContext | null;
   followup?: boolean;
   interpreted_by?: "rules" | "context" | "groq" | "gemini";
+  /** Why the answer uses FinDost's own wording instead of AI: AI turned off, not configured, today's limit used up, or a failed AI reply. */
+  ai_fallback?: "disabled" | "unavailable" | "quota" | "ai_error" | null;
+}
+
+export type CopilotStage = "understanding" | "calculating" | "writing";
+
+export interface CopilotTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
+export interface AccountSettings {
+  ai_assistance_enabled: boolean;
+  language: "en" | "ur";
 }
 
 export interface CopilotContext {

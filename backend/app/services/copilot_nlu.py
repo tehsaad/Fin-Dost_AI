@@ -367,7 +367,7 @@ def is_out_of_scope(text: str) -> bool:
 
 # ------------------------------------------------------------------------------------- follow-ups
 
-def _clean_params(params: dict | None) -> dict:
+def clean_params(params: dict | None) -> dict:
     """Context echoed by the client is untrusted: keep known keys with sane values only."""
     out: dict = {}
     for key in PARAM_KEYS:
@@ -385,7 +385,7 @@ def understand(text: str, today: date, context: dict | None = None) -> Understan
     u = classify(text, today)
     prev_intent = (context or {}).get("intent")
     prev_intent = prev_intent if prev_intent in TOOL_INTENTS else None
-    prev_params = _clean_params((context or {}).get("params"))
+    prev_params = clean_params((context or {}).get("params"))
     pending = bool((context or {}).get("pending"))
     if u.score < CONFIDENT and is_out_of_scope(text):
         return u  # "what about the PSX index today?" is not a follow-up

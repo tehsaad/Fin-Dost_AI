@@ -12,6 +12,7 @@ import { Notice, Spinner } from "@/components/shared/feedback";
 import { Modal } from "@/components/shared/modal";
 import { AiStatusPanel } from "@/components/app/ai-status";
 import { AccountSecurity } from "@/components/app/account-security";
+import { useAiAssistance } from "@/components/app/ai-assistance";
 import { api, errorMessage } from "@/lib/api";
 import { signOut } from "@/lib/auth";
 import { rupeesToPaisa } from "@/lib/format";
@@ -22,8 +23,10 @@ export default function SettingsPage() {
   const [f, setF] = useState({
     name: business.name, city: business.city ?? "", reserve: String(business.cash_reserve_paisa / 100),
     cash: String(business.opening_cash_paisa / 100), bank: String(business.opening_bank_paisa / 100), wallet: String(business.opening_wallet_paisa / 100),
-    opening_date: business.opening_date, language: business.language, ai_consent: business.ai_consent,
+    opening_date: business.opening_date, language: business.language,
   });
+  // Saved on its own, the moment it is switched, so it never waits on (or gets overwritten by) the form below.
+  const ai = useAiAssistance();
   const [msg, setMsg] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState<"reset" | "clear" | null>(null);
@@ -37,7 +40,7 @@ export default function SettingsPage() {
       await api("/business", { method: "PUT", body: {
         name: f.name, city: f.city || null, cash_reserve_paisa: rupeesToPaisa(f.reserve) ?? 0,
         opening_cash_paisa: rupeesToPaisa(f.cash) ?? 0, opening_bank_paisa: rupeesToPaisa(f.bank) ?? 0, opening_wallet_paisa: rupeesToPaisa(f.wallet) ?? 0,
-        opening_date: f.opening_date, language: f.language, ai_consent: f.ai_consent,
+        opening_date: f.opening_date, language: f.language,
       } });
       await refresh();
       setMsg({ tone: "success", text: "Settings saved." });
@@ -81,8 +84,10 @@ export default function SettingsPage() {
         </Card>
         <div className="space-y-6">
           <Card title="Privacy & AI">
-            <Toggle id="s-ai" checked={f.ai_consent} onChange={(v) => setF({ ...f, ai_consent: v })} label="Allow AI assistance"
+            <Toggle id="s-ai" checked={ai.enabled} onChange={(v) => { void ai.setAi(v); }} label="Allow AI assistance"
               description="Off by default. When on: (1) Copilot sends already-computed figures, with customer and supplier names masked, to Groq (or Gemini as backup) to word the answer — any answer with an unverified number is discarded — and, when its own rules can't place a question, sends the question text (names masked) to pick the right calculation; (2) receipt photos you choose to upload are read by Google Gemini and shown for your review before anything is saved. AI never calculates your balances." />
+            <p className="mt-2 text-[11px] text-slate-500" aria-live="polite">{ai.saving ? "Saving…" : ai.enabled ? "AI assistance is on. Saved to your account." : "AI assistance is off. Saved to your account."}</p>
+            {ai.error && <Notice tone="danger">{ai.error}</Notice>}
             <AiStatusPanel />
           </Card>
           <Card title="Account">
