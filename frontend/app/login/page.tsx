@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Terminal } from "lucide-react";
 import { AuthLayout } from "@/components/auth/auth-layout";
-import { captchaEnabled, Turnstile } from "@/components/auth/turnstile";
+import { captchaEnabled, Turnstile, useCaptchaToken } from "@/components/auth/turnstile";
 import { GoogleButton, googleEnabled } from "@/components/auth/google-button";
 import { Button } from "@/components/shared/button";
 import { Field, Input, Select } from "@/components/shared/form";
@@ -13,6 +13,7 @@ import { Notice, Spinner } from "@/components/shared/feedback";
 import { authMode, setDevToken } from "@/lib/auth";
 import { getSupabase, supabaseConfigured } from "@/lib/supabase/client";
 import { PrivateDemo } from "@/components/auth/private-demo";
+import { useQueryParam } from "@/lib/use-query-param";
 
 function safeNext(n: string | null) {
   return n && n.startsWith("/") && !n.startsWith("//") ? n : "/workspaces";
@@ -45,13 +46,14 @@ function DevLogin({ next }: { next: string }) {
 
 function LoginInner() {
   const router = useRouter();
-  const params = useSearchParams();
-  const next = safeNext(params.get("next"));
+  const next = safeNext(useQueryParam("next"));
+  const errorParam = useQueryParam("error");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [captcha, setCaptcha] = useState<string | null>(null);
+  const { token: captcha, onToken: setCaptcha, ready: captchaReady } = useCaptchaToken();
   const [reset, setReset] = useState(0);
-  const [error, setError] = useState<string | null>(params.get("error"));
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (errorParam) setError(errorParam); }, [errorParam]);
   const [busy, setBusy] = useState(false);
   const [unconfirmed, setUnconfirmed] = useState(false);
   const [resent, setResent] = useState(false);
@@ -75,11 +77,15 @@ function LoginInner() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (captchaEnabled && !captcha) return setError("Please complete the security check.");
     const supabase = getSupabase();
     if (!supabase) return setError("Sign-in is not configured.");
     setBusy(true);
-    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken: captcha ?? undefined } });
+    const captchaToken = await captchaReady();  // pressed before the security check finished: wait for it
+    if (captchaEnabled && !captchaToken) {
+      setBusy(false);
+      return setError("Please complete the security check.");
+    }
+    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken: captchaToken ?? undefined } });
     setBusy(false);
     if (err) {
       setReset((r) => r + 1);
@@ -124,5 +130,5 @@ function LoginInner() {
 }
 
 export default function LoginPage() {
-  return <Suspense><LoginInner /></Suspense>;
+  return <LoginInner />;
 }

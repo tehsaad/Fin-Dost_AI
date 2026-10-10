@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Building2, CheckCircle2, GraduationCap, Home, MailCheck, Store } from "lucide-react";
 import { AuthLayout } from "@/components/auth/auth-layout";
-import { captchaEnabled, Turnstile } from "@/components/auth/turnstile";
+import { captchaEnabled, Turnstile, useCaptchaToken } from "@/components/auth/turnstile";
+import { useQueryParam } from "@/lib/use-query-param";
 import { GoogleButton, googleEnabled } from "@/components/auth/google-button";
 import { Button } from "@/components/shared/button";
 import { Field, Input } from "@/components/shared/form";
@@ -20,14 +21,16 @@ const ICONS: Record<Kind, React.ElementType> = { sme: Store, enterprise: Buildin
 
 function SignupInner() {
   const router = useRouter();
-  const params = useSearchParams();
-  const initialKind = (params.get("type") as Kind) ?? "sme";
-  const [kind, setKind] = useState<Kind>(["sme", "enterprise", "household", "student"].includes(initialKind) ? initialKind : "sme");
+  const typeParam = useQueryParam("type");
+  const [kind, setKind] = useState<Kind>("sme");
+  useEffect(() => {  // "Start" on a landing-page card preselects that account type
+    if (typeParam && ["sme", "enterprise", "household", "student"].includes(typeParam)) setKind(typeParam as Kind);
+  }, [typeParam]);
   const [name, setName] = useState("");
   const [business, setBusiness] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [captcha, setCaptcha] = useState<string | null>(null);
+  const { token: captcha, onToken: setCaptcha, ready: captchaReady } = useCaptchaToken();
   const [reset, setReset] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -58,15 +61,19 @@ function SignupInner() {
     e.preventDefault();
     setError(null);
     if (password.length < 8) return setError("Use at least 8 characters for your password.");
-    if (captchaEnabled && !captcha) return setError("Please complete the security check.");
     const supabase = getSupabase();
     if (!supabase) return setError("Sign-up is not configured.");
     setBusy(true);
+    const captchaToken = await captchaReady();  // pressed before the security check finished: wait for it
+    if (captchaEnabled && !captchaToken) {
+      setBusy(false);
+      return setError("Please complete the security check.");
+    }
     rememberChoice();
     const { data, error: err } = await supabase.auth.signUp({
       email: email.trim(), password,
       options: {
-        captchaToken: captcha ?? undefined,
+        captchaToken: captchaToken ?? undefined,
         data: { account_type: kind, business_name: business.trim() || undefined, full_name: name.trim() || undefined },
         emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
       },
@@ -149,5 +156,5 @@ function SignupInner() {
 }
 
 export default function SignupPage() {
-  return <Suspense><SignupInner /></Suspense>;
+  return <SignupInner />;
 }

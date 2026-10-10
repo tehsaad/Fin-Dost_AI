@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
-import { captchaEnabled, Turnstile } from "@/components/auth/turnstile";
+import { captchaEnabled, Turnstile, useCaptchaToken } from "@/components/auth/turnstile";
 import { Notice, Spinner } from "@/components/shared/feedback";
 import { api, ApiError, enterWorkspace } from "@/lib/api";
 import { DEMO_PERSONAS } from "@/lib/demo-accounts";
@@ -13,19 +13,23 @@ import type { Kind } from "@/lib/types";
 /** Opens a private demo workspace for this visitor only (Supabase anonymous sign-in + seeded fictional data). */
 export function PrivateDemo() {
   const router = useRouter();
-  const [captcha, setCaptcha] = useState<string | null>(null);
+  const { onToken: setCaptcha, ready: captchaReady } = useCaptchaToken();
   const [reset, setReset] = useState(0);
   const [busy, setBusy] = useState<Kind | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const start = async (kind: Kind, name: string) => {
     setError(null);
-    if (captchaEnabled && !captcha) return setError("Complete the security check first.");
     const supabase = getSupabase();
     if (!supabase) return setError("Sign-in is not configured.");
     setBusy(kind);
+    const captchaToken = await captchaReady();  // clicked before the security check finished: wait for it
+    if (captchaEnabled && !captchaToken) {
+      setBusy(null);
+      return setError("Complete the security check first.");
+    }
     const { error: err } = await supabase.auth.signInAnonymously({
-      options: { captchaToken: captcha ?? undefined, data: { account_type: kind, private_demo: true } },
+      options: { captchaToken: captchaToken ?? undefined, data: { account_type: kind, private_demo: true } },
     });
     if (err) {
       setBusy(null);

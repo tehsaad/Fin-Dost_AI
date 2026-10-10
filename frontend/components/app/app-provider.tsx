@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { api, ApiError, enterWorkspace, forgetSelectedWorkspace, getSelectedWorkspace } from "@/lib/api";
 import type { Business, Feature, Me, Permission, Role } from "@/lib/types";
 import { Spinner } from "@/components/shared/feedback";
+import { prefetchApi } from "@/lib/hooks";
+import { initialRequests, requestsAfterAccount } from "@/lib/prefetch";
 
 interface AppCtx {
   me: Me;
@@ -29,6 +31,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const here = pathname + (typeof window === "undefined" ? "" : window.location.search);
     try {
       const selected = await getSelectedWorkspace();
+      // Start this page's first requests now, in parallel with the account check, instead of after it.
+      if (selected) initialRequests(pathname).forEach(prefetchApi);
       const m = await api<Me>("/me");
       if (m.needs_onboarding) {  // no workspace of any kind yet: create one
         forgetSelectedWorkspace();
@@ -44,6 +48,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         router.replace(`/workspaces?next=${encodeURIComponent(here)}`);
         return;
       }
+      requestsAfterAccount(pathname, m.business.features).forEach(prefetchApi);
       setMe(m);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {

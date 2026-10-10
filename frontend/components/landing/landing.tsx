@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BackendWarmup } from "@/components/backend-warmup";
+import { TURNSTILE_SRC } from "@/components/auth/turnstile-src";
 import { cn } from "@/lib/format";
 
 const MODULES = ["Digital Khata", "Udhaar tracking", "CSV import", "Cash-flow forecast", "Early warnings", "Shock simulator",
@@ -145,6 +147,9 @@ export default function Landing() {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-white text-slate-900 dark:bg-[#070b14] dark:text-white">
+      <BackendWarmup />
+      {/* most visitors go on to sign in: fetch the captcha script at low priority so it is cached by then */}
+      {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && <link rel="prefetch" href={TURNSTILE_SRC} as="script" />}
       <header className={cn("fixed inset-x-0 top-0 z-50 transition-all", scrolled ? "border-b border-slate-200/70 bg-white/80 backdrop-blur-xl dark:border-slate-800/70 dark:bg-[#070b14]/80" : "bg-transparent")}>
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5">
           <Link href="/" aria-label="FinDost home"><Logo /></Link>
