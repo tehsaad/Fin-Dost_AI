@@ -31,14 +31,33 @@ def _tx_dict(t: Tx) -> dict:
             "category": t.category, "amount_paisa": t.amount}
 
 
+def _records(transactions: list[dict], items: list[dict], item_type: str | None) -> list[dict]:
+    """Stable references to the ledger records behind an alert."""
+    refs = [{"type": "transaction", "id": t["id"]} for t in transactions]
+    for it in items:
+        if it.get("ref_type") and it.get("ref_id"):
+            refs.append({"type": it["ref_type"], "id": it["ref_id"]})
+        elif item_type and it.get("id"):
+            refs.append({"type": item_type, "id": it["id"]})
+    seen, out = set(), []
+    for r in refs:
+        if (r["type"], r["id"]) not in seen:
+            seen.add((r["type"], r["id"]))
+            out.append(r)
+    return out
+
+
 def _alert(rule: str, key: str, score: int, title: str, explanation: str, *, evidence=None, amounts=None,
-           dates=None, transactions=None, items=None, next_step: str, limitations: str, link: str) -> dict:
+           dates=None, transactions=None, items=None, item_type: str | None = None, impact_paisa: int | None = None,
+           impact_label: str | None = None, next_step: str, limitations: str, link: str) -> dict:
     score = int(max(0, min(score, 100)))
+    transactions, items = transactions or [], items or []
     return {
         "rule": rule, "entity_key": key, "score": score, "level": level_for(score), "title": title,
         "explanation": explanation, "evidence": evidence or [], "amounts": amounts or {}, "dates": dates or {},
-        "transactions": transactions or [], "items": items or [], "next_step": next_step,
-        "limitations": limitations, "link": link, "score_note": SCORE_NOTE,
+        "transactions": transactions, "items": items, "records": _records(transactions, items, item_type),
+        "impact_paisa": int(impact_paisa) if impact_paisa is not None else None, "impact_label": impact_label,
+        "next_step": next_step, "limitations": limitations, "link": link, "score_note": SCORE_NOTE,
     }
 
 
@@ -114,6 +133,7 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
             amounts={"opening_balance": s["opening_balance_paisa"], "minimum_balance": s["min_balance_paisa"]},
             dates={"shortage": s["shortage_date"], "minimum": s["min_balance_date"]},
             items=contributors,
+            impact_paisa=-s["min_balance_paisa"], impact_label="Cash gap at the lowest point",
             next_step="Open the Recovery page to compare collection, supplier and spending options.",
             limitations="Depends on the forecast assumptions (customer payment timing, everyday sales). "
                         "See the Forecast page for the model's back-test error.",
@@ -127,12 +147,21 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
                 "reserve_breach", "now", 70, "Cash is already below your safety reserve",
                 f"Balance {fmt_pkr(s['opening_balance_paisa'])} is below your reserve of {fmt_pkr(s['reserve_paisa'])}.",
                 amounts={"balance": s["opening_balance_paisa"], "reserve": s["reserve_paisa"]},
+                impact_paisa=s["reserve_paisa"] - s["opening_balance_paisa"], impact_label="Needed to restore the reserve",
                 next_step="Hold non-essential payments until the reserve is rebuilt.",
                 limitations="The reserve level is your own setting.", link="/forecast"))
         elif s["reserve_breach_date"]:
+            breach = date.fromisoformat(s["reserve_breach_date"])
+            causing = [e for e in forecast["events"] if e["amount_paisa"] < 0 and e["kind"] in ("payable", "recurring_out")
+                       and date.fromisoformat(e["date"]) <= breach][-3:]
             alerts.append(_alert(
                 "reserve_breach", "projected", 55, f"Cash projected below your reserve on {s['reserve_breach_date']}",
-                f"Your reserve is {fmt_pkr(s['reserve_paisa'])}; the projection dips to {fmt_pkr(s['min_balance_paisa'])}.",
+                f"Your reserve is {fmt_pkr(s['reserve_paisa'])}; the projection dips to {fmt_pkr(s['min_balance_paisa'])}."
+                + (" Bills due by then: " + ", ".join(f"{e['label']} {fmt_pkr(-e['amount_paisa'])} on {e['date']}" for e in causing) + "."
+                   if causing else ""),
+                evidence=[f"{e['date']}: {e['label']} {fmt_pkr(-e['amount_paisa'])} ({e['certainty']})" for e in causing],
+                items=causing,
+                impact_paisa=s["reserve_paisa"] - s["min_balance_paisa"], impact_label="Shortfall below the reserve",
                 amounts={"reserve": s["reserve_paisa"], "minimum_balance": s["min_balance_paisa"]},
                 dates={"breach": s["reserve_breach_date"]},
                 next_step="Review upcoming bills on the Forecast page.",
@@ -148,7 +177,7 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
             f"{len(at_risk)} bill(s) due in the next 14 days may not be covered",
             f"{fmt_pkr(total)} of scheduled payments fall on days when the projected balance is negative.",
             evidence=[f"{e['date']}: {e['label']} {fmt_pkr(-e['amount_paisa'])}" for e in at_risk],
-            amounts={"total_due": total}, items=at_risk,
+            amounts={"total_due": total}, items=at_risk, impact_paisa=total, impact_label="Bills that may not be covered",
             next_step="Talk to these suppliers early about timing, or collect overdue invoices first.",
             limitations="Assumes bills are paid in full on their due dates.", link="/recovery"))
 
@@ -166,6 +195,7 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
             f"{fmt_pkr(recent)} in the last 14 days vs an average of {fmt_pkr(int(prior))} per 14 days before "
             "(monthly salary/allowance excluded).",
             amounts={"recent_14d": recent, "prior_avg_14d": int(prior)},
+            impact_paisa=int(prior - recent), impact_label="Less revenue than usual (14 days)",
             dates={"from": (today - timedelta(days=13)).isoformat(), "to": today.isoformat()},
             next_step="Check whether fewer customers, lower prices or missing entries explain the drop.",
             limitations="Unrecorded sales look like a decline. Seasonal dips (e.g. after Eid) are normal.",
@@ -187,6 +217,7 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
                 f"Latest {fmt_pkr(latest.amount)} on {latest.occurred_on.isoformat()} vs a typical {fmt_pkr(int(typical))}.",
                 transactions=[_tx_dict(t) for t in txs],
                 amounts={"latest": latest.amount, "typical": int(typical)},
+                impact_paisa=latest.amount - int(typical), impact_label="Extra cost on the latest bill",
                 next_step="Check the bill for tariff or usage changes; the next one is already in the forecast.",
                 limitations="Seasonal bills (summer electricity, winter gas) naturally rise and fall.",
                 link="/forecast"))
@@ -215,6 +246,7 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
                 f"{fmt_pkr(spent)} in the last 14 days vs about {fmt_pkr(int(expected))} normally ({fmt_pkr(int(extra))} extra).",
                 transactions=[_tx_dict(t) for t in sorted(txs, key=lambda t: -t.amount)[:6]],
                 amounts={"recent_14d": spent, "usual_14d": int(expected), "extra": int(extra)},
+                impact_paisa=int(extra), impact_label="Spent above the usual level",
                 next_step="Check whether this is a planned purchase, a price rise or a one-off.",
                 limitations="Compares with your own last 8 weeks only; planned bulk buys can trigger this.",
                 link="/transactions"))
@@ -233,6 +265,7 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
             amounts={"total_overdue": total}, dates={"oldest_due": min(r.due_on for r in overdue).isoformat()},
             items=[{"id": r.id, "customer": r.customer_name, "reference": r.reference, "outstanding_paisa": r.outstanding,
                     "days_overdue": (today - r.due_on).days} for r in overdue[:10]],
+            item_type="receivable", impact_paisa=total, impact_label="Overdue money owed to you",
             next_step="Send polite payment reminders from the Khata page, largest and oldest first.",
             limitations="A late payment is not a judgement about the customer; there may be a dispute or a simple delay.",
             link="/transactions?tab=receivables"))
@@ -248,6 +281,8 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
                 f"Customer credit equals {ratio * 100:.0f}% of a month's revenue",
                 f"{fmt_pkr(total_rec)} is owed to you vs {fmt_pkr(monthly_rev)} revenue in the last 30 days.",
                 amounts={"receivables": total_rec, "monthly_revenue": monthly_rev},
+                items=[{"id": r.id} for r in open_recs[:20]], item_type="receivable",
+                impact_paisa=total_rec, impact_label="Cash tied up in customer credit",
                 next_step="Consider credit limits or shorter terms for new credit sales.",
                 limitations="Uses the last 30 days of revenue; seasonal businesses vary.",
                 link="/transactions?tab=receivables"))
@@ -260,6 +295,8 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
                 "customer_concentration", top_name, 45, f"{top_name} holds {top_amt / total_rec * 100:.0f}% of your receivables",
                 f"{fmt_pkr(top_amt)} of {fmt_pkr(total_rec)} owed to you is from one customer.",
                 amounts={"customer": top_amt, "total": total_rec},
+                items=[{"id": r.id} for r in open_recs if r.customer_name == top_name], item_type="receivable",
+                impact_paisa=top_amt, impact_label="Owed by this customer",
                 next_step="Avoid extending more credit to this customer until older invoices are paid.",
                 limitations="Concentration is a risk signal, not a statement about the customer.",
                 link="/transactions?tab=receivables"))
@@ -277,6 +314,7 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
                 "supplier_concentration", name, 40, f"{amt / total_sup * 100:.0f}% of purchases come from {name}",
                 f"{fmt_pkr(amt)} of {fmt_pkr(total_sup)} purchases in the last 60 days.",
                 amounts={"supplier": amt, "total": total_sup},
+                impact_paisa=amt, impact_label="Purchases from this supplier (60 days)",
                 next_step="Keep a second supplier for key items to reduce dependence on one source.",
                 limitations="Some products only have one distributor; this may be unavoidable.", link="/transactions"))
 
@@ -289,6 +327,7 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
             transactions=[{k: a[k] for k in ("id", "date", "description", "kind", "category", "amount_paisa")}]
             + ([_tx_dict(tx_by_id[a["duplicate_of"]])] if a.get("duplicate_of") in tx_by_id else []),
             amounts={"amount": a["amount_paisa"]}, dates={"date": a["date"]},
+            impact_paisa=a["amount_paisa"], impact_label="Amount to check",
             next_step="Check the receipt. If it is correct, no action is needed.",
             limitations="Statistical outlier only. Unusual does not mean wrong or fraudulent.",
             link="/transactions"))
@@ -304,6 +343,8 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
                 "These items have more than 60 days of stock at the current sales rate.",
                 evidence=[f"{p['name']}: {p['quantity']} {p['unit']}, ~{p['days_of_cover'] or 'no'} days of cover" for p in slow[:6]],
                 amounts={"value": value},
+                items=[{"id": p["id"]} for p in slow if p.get("id")], item_type="product",
+                impact_paisa=value, impact_label="Cash tied up in slow stock",
                 next_step="Pause reorders for these items or consider a small discount.",
                 limitations="Based on the last 28 days of recorded sales; seasonal items may pick up.",
                 link="/inventory"))

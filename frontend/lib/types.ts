@@ -138,6 +138,9 @@ export interface Alert {
   dates: Record<string, string>;
   transactions: AlertTx[];
   items: Record<string, unknown>[];
+  records: { type: "transaction" | "receivable" | "payable" | "product"; id: string }[];
+  impact_paisa: number | null;
+  impact_label: string | null;
   next_step: string;
   limitations: string;
   link: string;

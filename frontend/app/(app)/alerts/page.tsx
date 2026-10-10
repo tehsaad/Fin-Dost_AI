@@ -44,11 +44,20 @@ function AlertCard({ alert, onAck, defaultOpen }: { alert: Alert; onAck: (id: st
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{alert.title}</p>
           <p className="mt-0.5 text-xs text-slate-500">{RULE_LABEL[alert.rule] ?? alert.rule} · severity {alert.score}/100 · first seen {formatDate(alert.first_detected_on)}{acked && " · acknowledged"}</p>
         </div>
+        {alert.impact_paisa !== null && (
+          <div className="hidden shrink-0 text-right sm:block">
+            <p className="tabular text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPKR(alert.impact_paisa)}</p>
+            <p className="text-[10px] text-slate-500">{alert.impact_label}</p>
+          </div>
+        )}
         <ChevronDown className={cn("mt-1 h-4 w-4 shrink-0 text-slate-400 transition-transform", open && "rotate-180")} />
       </button>
       {open && (
         <div className="space-y-4 border-t border-slate-100 p-4 text-sm dark:border-slate-800">
           <p className="text-slate-700 dark:text-slate-300">{alert.explanation}</p>
+          {alert.impact_paisa !== null && (
+            <p className="text-xs text-slate-600 sm:hidden dark:text-slate-300">{alert.impact_label}: <strong className="tabular">{formatPKR(alert.impact_paisa)}</strong></p>
+          )}
           {(Object.keys(alert.amounts).length > 0 || Object.keys(alert.dates).length > 0) && (
             <div className="flex flex-wrap gap-2">
               {Object.entries(alert.amounts).map(([k, v]) => <span key={k} className="rounded-md bg-slate-100 px-2 py-1 text-xs dark:bg-slate-800">{labelize(k)}: <strong className="tabular">{formatPKR(v)}</strong></span>)}
@@ -87,7 +96,7 @@ function AlertCard({ alert, onAck, defaultOpen }: { alert: Alert; onAck: (id: st
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[11px] text-slate-400">{alert.score_note}</p>
+            <p className="text-[11px] text-slate-400">{alert.score_note}{alert.records.length > 0 && ` · based on ${alert.records.length} record${alert.records.length === 1 ? "" : "s"}`}</p>
             <div className="flex gap-2">
               <Button size="sm" variant="ghost" onClick={() => onAck(alert.id)}>{acked ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}{acked ? "Re-open" : "Acknowledge"}</Button>
               <Link href={alert.link}><Button size="sm" variant="outline">Go to action <ArrowRight className="h-3.5 w-3.5" /></Button></Link>
