@@ -62,11 +62,19 @@ def rephrase(question: str, template_answer: str, evidence: list[str], language:
     try:
         resp = httpx.post(url, params={"key": settings.gemini_api_key}, timeout=settings.llm_timeout_seconds,
                           json={"contents": [{"parts": [{"text": prompt}]}],
-                                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 400}})
-        resp.raise_for_status()
-        text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception as exc:  # network, quota, schema - fall back silently
+                                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 400,
+                                                     # Rephrasing needs no reasoning; thinking tokens would eat the budget.
+                                                     "thinkingConfig": {"thinkingBudget": 0}}})
+        if resp.status_code >= 400:
+            # Never log the URL or exception text: the API key is a query parameter.
+            log.warning("LLM call failed: HTTP %s (model %s)", resp.status_code, settings.gemini_model)
+            return None
+        parts = resp.json()["candidates"][0]["content"]["parts"]
+        text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+    except Exception as exc:  # network, timeout, schema - fall back silently
         log.warning("LLM call failed: %s", type(exc).__name__)
+        return None
+    if not text:
         return None
     if not numbers_grounded(text, masked_evidence):
         log.info("LLM answer rejected by number check")

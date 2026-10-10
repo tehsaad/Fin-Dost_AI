@@ -65,7 +65,7 @@ cd backend
 python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 DATABASE_URL=sqlite:///./local.db DEV_AUTH_SECRET=local-dev-secret-change-me-0123456789 \
   .venv/bin/uvicorn app.main:app --port 8000
-.venv/bin/python -m pytest          # 39 tests
+.venv/bin/python -m pytest          # 40 tests
 ```
 
 Frontend (Node 20+), developer sign-in without Supabase:
@@ -112,7 +112,7 @@ Frontend (`frontend/.env.example`): `API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT
 
 ## Testing
 
-- `backend/tests`: 39 tests — engine (ledger maths, forecast, collection weights, recurring detection, shocks,
+- `backend/tests`: 40 tests — engine (ledger maths, forecast, collection weights, recurring detection, shocks,
   recovery, risk rules, anomalies, CSV parsing, Urdu formatting, benchmark) and API (auth, module separation,
   ownership isolation, validation, imports, reports, copilot).
 - End-to-end: headless Chrome over every page for the SME and student accounts, checking for console errors and

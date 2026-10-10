@@ -20,6 +20,7 @@ from ..money import fmt_pkr
 from ..schemas import CopilotIn
 from ..services import copilot as copilot_svc
 from ..services import llm
+from ..services.i18n import isolate_ltr
 from ..services.impact import SDG_TARGETS, run_benchmark
 from ..services.insights import dashboard as build_dashboard
 from ..services.insights import data_quality, report_insights
@@ -229,7 +230,7 @@ def copilot(body: CopilotIn, business: Business = Depends(require_feature("copil
         names = list(snap.customers.values()) + list(snap.suppliers.values()) + [business.name]
         text = llm.rephrase(body.question, result["answer"], result["evidence"], result["language"], names)
         if text:
-            result["answer"] = text
+            result["answer"] = isolate_ltr(text.replace("\u2066", "").replace("\u2069", "")) if result["language"] == "ur" else text
             result["used_llm"] = True
     return result
 

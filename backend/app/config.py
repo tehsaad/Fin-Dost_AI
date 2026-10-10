@@ -49,7 +49,7 @@ def get_settings() -> Settings:
             if o.strip()
         ),
         gemini_api_key=os.getenv("GEMINI_API_KEY") or None,
-        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
         llm_timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "8")),
         today_override=os.getenv("FINDOST_TODAY") or None,
         max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024))),
