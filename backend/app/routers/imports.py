@@ -14,8 +14,10 @@ from ..config import get_settings
 from ..db import get_db
 from ..errors import ApiError
 from ..models import Business, ImportBatch, Payable, Receivable, Transaction
-from ..schemas import ImportConfirmIn
-from ..services.ingestion import TEMPLATES, IngestionError, build_preview, dedupe_key, read_csv
+from ..schemas import ImportConfirmIn, RowCorrectionIn
+from ..services import audit
+from ..services.ingestion import (TEMPLATES, IngestionError, Settler, annotate_settlements, build_preview, correct_row,
+                                  dedupe_key, read_csv, summarize)
 from .common import context, get_or_create_customer, get_or_create_supplier, owned
 
 router = APIRouter(tags=["import"])
@@ -57,11 +59,38 @@ async def preview(file: UploadFile = File(...), mapping: str | None = Form(defau
         result = build_preview(headers, rows, today, existing, history, mapping_dict)
     except IngestionError as exc:
         raise ApiError(422, "invalid_csv", str(exc))
+    annotate_settlements(result["rows"], snap.receivables, snap.payables, snap.customers, snap.suppliers)
     batch = ImportBatch(business_id=business.id, filename=name, adapter=result["adapter"], status="preview",
                         rows=result["rows"], summary=result["summary"])
     db.add(batch)
     db.commit()
     return {"batch_id": batch.id, "filename": name, **result}
+
+
+@router.put("/import/batches/{batch_id}/rows/{row_number}")
+def correct_import_row(batch_id: str, row_number: int, body: RowCorrectionIn,
+                       business: Business = Depends(require_feature("import")), db: Session = Depends(get_db)):
+    """Fix a parsed row before importing. The row is validated again; nothing is saved to the ledger yet."""
+    batch = owned(db, ImportBatch, batch_id, business, "Import batch")
+    if batch.status != "preview":
+        raise ApiError(409, "already_processed", f"This import was already {batch.status}")
+    rows = [dict(r) for r in batch.rows]
+    pos = next((i for i, r in enumerate(rows) if r["row_number"] == row_number), None)
+    if pos is None:
+        raise ApiError(404, "not_found", "Row not found in this import")
+    changes = body.model_dump(exclude_unset=True)
+    for k in ("date", "due_date"):
+        if changes.get(k) is not None:
+            changes[k] = changes[k].isoformat()
+    snap, today = context(db, business)
+    existing = {dedupe_key(t.occurred_on, t.amount, t.kind, t.description) for t in snap.txs}
+    earlier = {r["dedupe_key"] for r in rows[:pos] if r.get("dedupe_key") and r["status"] != "rejected"}
+    rows[pos] = correct_row(rows[pos], changes, today, existing, earlier)
+    annotate_settlements(rows, snap.receivables, snap.payables, snap.customers, snap.suppliers)
+    batch.rows = rows
+    batch.summary = {**batch.summary, **summarize(rows)}
+    db.commit()
+    return {"row": rows[pos], "summary": batch.summary, "rows": rows}
 
 
 @router.post("/import/confirm")
@@ -71,18 +100,21 @@ def confirm(body: ImportConfirmIn, business: Business = Depends(require_feature(
         raise ApiError(409, "already_processed", f"This import was already {batch.status}")
     snap, _ = context(db, business)
     existing = {dedupe_key(t.occurred_on, t.amount, t.kind, t.description) for t in snap.txs}
-    excluded = set(body.exclude_rows)
-    imported = skipped_dup = skipped_user = rejected = 0
+    excluded, forced = set(body.exclude_rows), set(body.include_duplicates)
+    imported = skipped_dup = skipped_user = rejected = unmatched = 0
+    created: list[str] = []
     has_receivables = "receivables" in FEATURES[business.kind]
+    settler = Settler(snap.receivables, snap.payables)
     for row in batch.rows:
         if row["status"] == "rejected":
             rejected += 1
             continue
-        if row["status"] == "duplicate" or row["dedupe_key"] in existing:
-            skipped_dup += 1
-            continue
         if row["row_number"] in excluded:
             skipped_user += 1
+            continue
+        is_dup = row["status"] == "duplicate" or row["dedupe_key"] in existing
+        if is_dup and row["row_number"] not in forced:
+            skipped_dup += 1
             continue
         kind = row["kind"]
         when = date.fromisoformat(row["date"])
@@ -96,48 +128,58 @@ def confirm(body: ImportConfirmIn, business: Business = Depends(require_feature(
             cust = get_or_create_customer(db, business, None, row["party"])
             tx.customer_id = cust.id
             if kind == "credit_sale":
+                due = date.fromisoformat(row["due_date"])
                 rec = Receivable(business_id=business.id, customer_id=cust.id, reference=row.get("reference"),
-                                 description=row["description"] or None, issued_on=when,
-                                 due_on=date.fromisoformat(row["due_date"]), amount_paisa=row["amount_paisa"])
+                                 description=row["description"] or None, issued_on=when, due_on=due,
+                                 amount_paisa=row["amount_paisa"])
                 db.add(rec)
                 db.flush()
                 tx.receivable_id = rec.id
+                settler.add_receivable(rec.id, cust.id, due, row["amount_paisa"])
             else:
-                # apply to the customer's oldest open receivable if one exists, else record as income
-                open_rec = next((r for r in snap.receivables if r.customer_id == cust.id and r.outstanding >= row["amount_paisa"]), None)
-                if open_rec:
-                    tx.receivable_id = open_rec.id
-                else:
+                hit = settler.match_receivable(cust.id, row["amount_paisa"])
+                if hit:
+                    tx.receivable_id = hit
+                else:  # no open invoice covers it: recorded as income, as the preview warned
                     tx.kind = "income"
+                    unmatched += 1
                 tx.account = row["account"] or "cash"
         elif kind in ("credit_purchase", "supplier_payment"):
             sup = get_or_create_supplier(db, business, None, row["party"], row["category"])
             tx.supplier_id = sup.id if sup else None
             if kind == "credit_purchase":
+                due = date.fromisoformat(row["due_date"])
                 pay = Payable(business_id=business.id, supplier_id=tx.supplier_id, reference=row.get("reference"),
                               description=row["description"] or None, category=row["category"] or "Supplier Bill",
-                              issued_on=when, due_on=date.fromisoformat(row["due_date"]), amount_paisa=row["amount_paisa"])
+                              issued_on=when, due_on=due, amount_paisa=row["amount_paisa"])
                 db.add(pay)
                 db.flush()
                 tx.payable_id = pay.id
+                settler.add_payable(pay.id, tx.supplier_id, due, row["amount_paisa"])
             else:
-                open_pay = next((p for p in snap.payables if p.supplier_id == tx.supplier_id and p.outstanding >= row["amount_paisa"]), None)
-                if open_pay:
-                    tx.payable_id = open_pay.id
+                hit = settler.match_payable(tx.supplier_id, row["amount_paisa"])
+                if hit:
+                    tx.payable_id = hit
                 else:
                     tx.kind = "expense"
+                    unmatched += 1
                 tx.account = row["account"] or "cash"
         else:
             tx.account = row["account"] or "cash"
         db.add(tx)
+        db.flush()
+        created.append(tx.id)
         existing.add(row["dedupe_key"])
         imported += 1
+    counts = {"imported": imported, "skipped_duplicates": skipped_dup, "skipped_by_user": skipped_user,
+              "rejected": rejected, "unmatched_payments": unmatched,
+              "duplicates_included": len(forced & {r["row_number"] for r in batch.rows if r["status"] == "duplicate"})}
     batch.status = "confirmed"
-    batch.summary = {**batch.summary, "imported": imported, "skipped_duplicates": skipped_dup,
-                     "skipped_by_user": skipped_user, "rejected": rejected}
-    db.commit()
-    return {"batch_id": batch.id, "imported": imported, "skipped_duplicates": skipped_dup,
-            "skipped_by_user": skipped_user, "rejected": rejected}
+    batch.summary = {**batch.summary, **counts}
+    audit.record(db, business, "import_batch", batch.id, "import",
+                 extra={"filename": batch.filename, **counts, "transaction_ids": created[:500]})
+    db.commit()  # one database transaction: either every row above is saved or none is
+    return {"batch_id": batch.id, **counts}
 
 
 @router.get("/import/batches")

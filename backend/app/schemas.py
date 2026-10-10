@@ -214,3 +214,19 @@ class CopilotIn(_Base):
 class ImportConfirmIn(_Base):
     batch_id: str
     exclude_rows: list[int] = Field(default_factory=list, max_length=5000)
+    # rows flagged as duplicates that the user confirms are separate, legitimate transactions
+    include_duplicates: list[int] = Field(default_factory=list, max_length=5000)
+
+
+_Date = date  # the field below is called "date", which would shadow the type inside the class body
+
+
+class RowCorrectionIn(_Base):
+    date: _Date | None = None
+    kind: TxKind | None = None
+    amount_paisa: int | None = Field(default=None, gt=0, le=MAX_PAISA)
+    category: str | None = Field(default=None, max_length=60)
+    description: str | None = Field(default=None, max_length=240)
+    party: str | None = Field(default=None, max_length=120)
+    account: Account | None = None
+    due_date: _Date | None = None

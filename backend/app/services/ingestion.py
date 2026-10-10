@@ -325,29 +325,172 @@ def build_preview(headers: list[str], rows: list[list[str]], today: date, existi
             seen.add(key)
         out.append(pr)
 
-    accepted = [r for r in out if r.status == "accepted"]
-    dates = sorted(r.date for r in accepted if r.date)
-    total_in = sum(r.amount_paisa for r in accepted if r.kind in ("income", "customer_payment"))
-    total_out = sum(r.amount_paisa for r in accepted if r.kind in ("expense", "supplier_payment"))
+    rows_out = [r.to_dict() for r in out]
     return {
         "adapter": adapter.name,
         "adapter_label": adapter.label,
         "mapping": mapping,
         "headers": headers,
         "day_first": day_first,
-        "rows": [r.to_dict() for r in out],
-        "summary": {
-            "total_rows": len(out),
-            "accepted": len(accepted),
-            "rejected": sum(r.status == "rejected" for r in out),
-            "duplicates": sum(r.status == "duplicate" for r in out),
-            "date_from": dates[0] if dates else None,
-            "date_to": dates[-1] if dates else None,
-            "cash_in_paisa": total_in,
-            "cash_out_paisa": total_out,
-            "auto_categorized": sum(1 for r in accepted if (r.category_reason or "").startswith("auto")),
-        },
+        "rows": rows_out,
+        "summary": summarize(rows_out),
     }
+
+
+def summarize(rows: list[dict]) -> dict:
+    accepted = [r for r in rows if r["status"] == "accepted"]
+    dates = sorted(r["date"] for r in accepted if r["date"])
+    return {
+        "total_rows": len(rows),
+        "accepted": len(accepted),
+        "rejected": sum(r["status"] == "rejected" for r in rows),
+        "duplicates": sum(r["status"] == "duplicate" for r in rows),
+        "corrected": sum(1 for r in rows if r.get("corrected")),
+        "date_from": dates[0] if dates else None,
+        "date_to": dates[-1] if dates else None,
+        "cash_in_paisa": sum(r["amount_paisa"] for r in accepted if r["kind"] in ("income", "customer_payment")),
+        "cash_out_paisa": sum(r["amount_paisa"] for r in accepted if r["kind"] in ("expense", "supplier_payment")),
+        "auto_categorized": sum(1 for r in accepted if (r.get("category_reason") or "").startswith("auto")),
+    }
+
+
+# --------------------------------------------------------------------------- user corrections
+
+TX_KINDS = ("income", "expense", "credit_sale", "customer_payment", "credit_purchase", "supplier_payment",
+            "loan_received", "loan_repayment", "owner_withdrawal")
+PARTY_KINDS = ("credit_sale", "credit_purchase", "customer_payment", "supplier_payment")
+CORRECTABLE = ("date", "kind", "amount_paisa", "category", "description", "party", "account", "due_date")
+
+
+def correct_row(row: dict, changes: dict, today: date, existing_keys: set[str], earlier_keys: set[str]) -> dict:
+    """Apply a user's correction to a preview row and validate it again from scratch.
+
+    The row keeps its original parsed values under ``original`` so the import stays traceable.
+    """
+    new = dict(row)
+    if not new.get("corrected"):
+        new["original"] = {k: row.get(k) for k in CORRECTABLE}
+    for k, v in changes.items():
+        if k in CORRECTABLE:
+            new[k] = v
+    new["corrected"] = True
+    reasons: list[str] = []
+    try:
+        d = date.fromisoformat(new["date"]) if new.get("date") else None
+    except (TypeError, ValueError):
+        d = None
+    if d is None:
+        reasons.append("date is missing or not YYYY-MM-DD")
+    elif d > today + timedelta(days=1):
+        reasons.append(f"date {d.isoformat()} is in the future")
+    elif d < today - timedelta(days=3 * 365):
+        reasons.append(f"date {d.isoformat()} is more than 3 years old")
+    amount = new.get("amount_paisa")
+    if not isinstance(amount, int) or isinstance(amount, bool) or not (0 < amount <= 10**13):
+        reasons.append("amount must be a positive whole number of paisa")
+    if new.get("kind") not in TX_KINDS:
+        reasons.append("choose a valid type")
+    if new.get("kind") in PARTY_KINDS and not (new.get("party") or "").strip():
+        reasons.append(f"{str(new.get('kind')).replace('_', ' ')} needs a customer/supplier name")
+    if new.get("account") not in (None, "cash", "bank", "wallet"):
+        reasons.append("account must be cash, bank or wallet")
+    new["description"] = (new.get("description") or "")[:240]
+    new["category"] = (new.get("category") or "Uncategorized")[:60]
+    new["party"] = ((new.get("party") or "").strip()[:120]) or None
+    if new.get("kind") in ("credit_sale", "credit_purchase") and d is not None:
+        try:
+            due = date.fromisoformat(new["due_date"]) if new.get("due_date") else d + timedelta(days=30)
+        except (TypeError, ValueError):
+            due = None
+            reasons.append("due date is not YYYY-MM-DD")
+        if due is not None and due < d:
+            reasons.append("due date is before the transaction date")
+        new["due_date"] = due.isoformat() if due else None
+    else:
+        new["due_date"] = None
+    new["category_reason"] = "corrected by you"
+    new["warnings"] = [w for w in row.get("warnings", []) if not w.startswith("direction taken")]
+    new["reasons"] = reasons
+    new["dedupe_key"] = None
+    if reasons:
+        new["status"] = "rejected"
+    else:
+        key = dedupe_key(d, amount, new["kind"], new["description"])
+        new["dedupe_key"] = key
+        if key in existing_keys:
+            new["status"], new["reasons"] = "duplicate", ["already in your ledger"]
+        elif key in earlier_keys:
+            new["status"], new["reasons"] = "duplicate", ["repeated earlier in this file"]
+        else:
+            new["status"] = "accepted"
+    return new
+
+
+# --------------------------------------------------------------------------- settlement matching
+
+class Settler:
+    """Matches imported payments to open invoices/bills, tracking what is left on each one.
+
+    Used for the preview (to warn before import) and for the import itself, so one invoice can
+    never be settled twice by several payments in the same file.
+    """
+
+    def __init__(self, receivables, payables):
+        self.recs = [[r.id, r.customer_id, r.due_on, r.outstanding] for r in sorted(receivables, key=lambda r: r.due_on)
+                     if r.outstanding > 0]
+        self.pays = [[p.id, p.supplier_id, p.due_on, p.outstanding] for p in sorted(payables, key=lambda p: p.due_on)
+                     if p.outstanding > 0]
+
+    def add_receivable(self, rec_id: str, customer_id: str, due_on: date, amount: int) -> None:
+        self.recs.append([rec_id, customer_id, due_on, amount])
+        self.recs.sort(key=lambda r: r[2])
+
+    def add_payable(self, pay_id: str, supplier_id: str | None, due_on: date, amount: int) -> None:
+        self.pays.append([pay_id, supplier_id, due_on, amount])
+        self.pays.sort(key=lambda p: p[2])
+
+    @staticmethod
+    def _take(items: list, party_id: str | None, amount: int) -> str | None:
+        for it in items:
+            if party_id is not None and it[1] == party_id and it[3] >= amount:
+                it[3] -= amount
+                return it[0]
+        return None
+
+    def match_receivable(self, customer_id: str | None, amount: int) -> str | None:
+        return self._take(self.recs, customer_id, amount)
+
+    def match_payable(self, supplier_id: str | None, amount: int) -> str | None:
+        return self._take(self.pays, supplier_id, amount)
+
+
+def annotate_settlements(rows: list[dict], receivables, payables, customers: dict[str, str],
+                         suppliers: dict[str, str]) -> None:
+    """Dry-run the import's matching and tell the user what each payment row will settle."""
+    cust_by_name = {name.lower(): cid for cid, name in customers.items()}
+    sup_by_name = {name.lower(): sid for sid, name in suppliers.items()}
+    settler = Settler(receivables, payables)
+    for r in rows:
+        r["settles"] = None
+        if r["status"] != "accepted" or r["kind"] not in PARTY_KINDS:
+            continue
+        party = (r.get("party") or "").lower()
+        if r["kind"] == "credit_sale":
+            cid = cust_by_name.setdefault(party, f"new:{party}")
+            settler.add_receivable(f"row:{r['row_number']}", cid, date.fromisoformat(r["due_date"]), r["amount_paisa"])
+        elif r["kind"] == "credit_purchase":
+            sid = sup_by_name.setdefault(party, f"new:{party}")
+            settler.add_payable(f"row:{r['row_number']}", sid, date.fromisoformat(r["due_date"]), r["amount_paisa"])
+        elif r["kind"] == "customer_payment":
+            hit = settler.match_receivable(cust_by_name.get(party), r["amount_paisa"])
+            r["settles"] = ({"type": "receivable", "id": hit} if hit else
+                            {"type": None, "note": f"No open invoice for {r['party']} covers this amount: it will be "
+                                                   "recorded as income (revenue). Edit the row if that is wrong."})
+        else:
+            hit = settler.match_payable(sup_by_name.get(party), r["amount_paisa"])
+            r["settles"] = ({"type": "payable", "id": hit} if hit else
+                            {"type": None, "note": f"No open bill for {r['party']} covers this amount: it will be "
+                                                   "recorded as an expense. Edit the row if that is wrong."})
 
 
 TEMPLATES = {

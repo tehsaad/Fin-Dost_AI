@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
-import { CheckCircle2, Download, FileSpreadsheet, RefreshCw, UploadCloud, XCircle } from "lucide-react";
+import { CheckCircle2, Download, FileSpreadsheet, Pencil, RefreshCw, UploadCloud, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/app/shell";
 import { Card } from "@/components/shared/card";
 import { Button } from "@/components/shared/button";
 import { Select } from "@/components/shared/form";
 import { Notice, Spinner, Tabs } from "@/components/shared/feedback";
+import { RowEditor, type ImportRow, type ImportSummary } from "@/components/import/row-editor";
 import { api, errorMessage } from "@/lib/api";
 import { cn, formatPKR, KIND_LABEL } from "@/lib/format";
 
@@ -19,20 +20,7 @@ const FIELDS: { id: string; label: string }[] = [
 ];
 const MAX_BYTES = 2 * 1024 * 1024;
 
-interface PreviewRow {
-  row_number: number;
-  status: "accepted" | "rejected" | "duplicate";
-  reasons: string[];
-  warnings: string[];
-  date: string | null;
-  kind: string | null;
-  amount_paisa: number | null;
-  account: string | null;
-  category: string | null;
-  category_reason: string | null;
-  description: string;
-  party: string | null;
-}
+type PreviewRow = ImportRow;
 interface Preview {
   batch_id: string;
   filename: string;
@@ -42,9 +30,9 @@ interface Preview {
   headers: string[];
   day_first: boolean;
   rows: PreviewRow[];
-  summary: { total_rows: number; accepted: number; rejected: number; duplicates: number; date_from: string | null; date_to: string | null; cash_in_paisa: number; cash_out_paisa: number; auto_categorized: number };
+  summary: ImportSummary;
 }
-interface ConfirmResult { imported: number; skipped_duplicates: number; skipped_by_user: number; rejected: number }
+interface ConfirmResult { imported: number; skipped_duplicates: number; skipped_by_user: number; rejected: number; unmatched_payments: number; duplicates_included: number }
 
 const TEMPLATES = [
   { name: "findost-template.csv", label: "FinDost template", hint: "date, type, amount, category… incl. credit sales" },
@@ -57,6 +45,8 @@ export default function ImportPage() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
+  const [forced, setForced] = useState<Set<number>>(new Set());
+  const [editing, setEditing] = useState<PreviewRow | null>(null);
   const [filter, setFilter] = useState<"all" | "accepted" | "rejected" | "duplicate">("all");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +69,7 @@ export default function ImportPage() {
       setPreview(p);
       setMapping(p.mapping);
       setExcluded(new Set());
+      setForced(new Set());
       setFilter("all");
     } catch (e) {
       setError(errorMessage(e));
@@ -92,7 +83,7 @@ export default function ImportPage() {
     setBusy(true);
     setError(null);
     try {
-      setResult(await api<ConfirmResult>("/import/confirm", { body: { batch_id: preview.batch_id, exclude_rows: [...excluded] } }));
+      setResult(await api<ConfirmResult>("/import/confirm", { body: { batch_id: preview.batch_id, exclude_rows: [...excluded], include_duplicates: [...forced] } }));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -101,6 +92,8 @@ export default function ImportPage() {
   };
 
   const rows = useMemo(() => (preview?.rows ?? []).filter((r) => filter === "all" || r.status === filter), [preview, filter]);
+  const forcedDuplicates = (preview?.rows ?? []).filter((r) => r.status === "duplicate" && forced.has(r.row_number)).length;
+  const toImport = preview ? preview.summary.accepted - [...excluded].filter((n) => preview.rows.some((r) => r.row_number === n && r.status === "accepted")).length + forcedDuplicates : 0;
   const step = result ? 3 : preview ? 2 : 1;
 
   return (
@@ -156,7 +149,7 @@ export default function ImportPage() {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
             {[
               ["Rows read", preview.summary.total_rows, "text-slate-900 dark:text-white"],
-              ["Ready to import", preview.summary.accepted - excluded.size, "text-emerald-600"],
+              ["Ready to import", toImport, "text-emerald-600"],
               ["Rejected", preview.summary.rejected, "text-red-600"],
               ["Duplicates", preview.summary.duplicates, "text-amber-600"],
               ["Auto-categorised", preview.summary.auto_categorized, "text-blue-600"],
@@ -182,19 +175,32 @@ export default function ImportPage() {
             </div>
           </Card>
 
-          <Card title="Preview of normalised records" subtitle="Untick rows you don't want. Rejected and duplicate rows are never imported."
+          <Card title="Preview of normalised records" subtitle="Untick rows you don't want. Fix rejected rows with the pencil. Duplicates are skipped unless you tick “import anyway” (e.g. two genuine identical sales)."
             action={<Tabs tabs={[{ id: "all", label: "All", count: preview.rows.length }, { id: "accepted", label: "Ready", count: preview.summary.accepted }, { id: "rejected", label: "Rejected", count: preview.summary.rejected }, { id: "duplicate", label: "Duplicates", count: preview.summary.duplicates }]} value={filter} onChange={setFilter} />}>
             <div className="max-h-[480px] overflow-auto">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-white text-left uppercase tracking-wide text-slate-500 dark:bg-slate-900">
-                  <tr><th className="py-2 pr-2">Import</th><th className="py-2 pr-2">Row</th><th className="py-2 pr-2">Status</th><th className="py-2 pr-2">Date</th><th className="py-2 pr-2">Type</th><th className="py-2 pr-2 text-right">Amount</th><th className="py-2 pr-2">Category</th><th className="py-2 pr-2">Description</th><th className="py-2">Notes</th></tr>
+                  <tr><th className="py-2 pr-2">Import</th><th className="py-2 pr-2"><span className="sr-only">Edit</span></th><th className="py-2 pr-2">Row</th><th className="py-2 pr-2">Status</th><th className="py-2 pr-2">Date</th><th className="py-2 pr-2">Type</th><th className="py-2 pr-2 text-right">Amount</th><th className="py-2 pr-2">Category</th><th className="py-2 pr-2">Description</th><th className="py-2">Notes</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {rows.map((r) => (
                     <tr key={r.row_number} className={cn(r.status !== "accepted" && "bg-slate-50/70 dark:bg-slate-800/20")}>
                       <td className="py-2 pr-2">
-                        <input type="checkbox" aria-label={`Import row ${r.row_number}`} disabled={r.status !== "accepted"} checked={r.status === "accepted" && !excluded.has(r.row_number)}
-                          onChange={(e) => { const next = new Set(excluded); if (e.target.checked) next.delete(r.row_number); else next.add(r.row_number); setExcluded(next); }} />
+                        {r.status === "duplicate" ? (
+                          <label className="flex items-center gap-1 text-[10px] text-amber-700">
+                            <input type="checkbox" aria-label={`Import duplicate row ${r.row_number} anyway`} checked={forced.has(r.row_number)}
+                              onChange={(e) => { const next = new Set(forced); if (e.target.checked) next.add(r.row_number); else next.delete(r.row_number); setForced(next); }} />
+                            anyway
+                          </label>
+                        ) : (
+                          <input type="checkbox" aria-label={`Import row ${r.row_number}`} disabled={r.status !== "accepted"} checked={r.status === "accepted" && !excluded.has(r.row_number)}
+                            onChange={(e) => { const next = new Set(excluded); if (e.target.checked) next.delete(r.row_number); else next.add(r.row_number); setExcluded(next); }} />
+                        )}
+                      </td>
+                      <td className="py-2 pr-2">
+                        <button type="button" onClick={() => setEditing(r)} aria-label={`Correct row ${r.row_number}`} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
                       </td>
                       <td className="tabular py-2 pr-2 text-slate-400">{r.row_number}</td>
                       <td className="py-2 pr-2">
@@ -208,8 +214,11 @@ export default function ImportPage() {
                       <td className="py-2 pr-2">{r.category ?? "—"}{r.category_reason && <p className="text-[10px] text-slate-400">{r.category_reason}</p>}</td>
                       <td className="max-w-[180px] truncate py-2 pr-2">{r.description || "—"}{r.party && <p className="text-[10px] text-slate-400">{r.party}</p>}</td>
                       <td className="py-2 text-[11px]">
-                        {r.reasons.map((x) => <p key={x} className="text-red-600">{x}</p>)}
+                        {r.corrected && <p className="text-blue-600">corrected by you</p>}
+                        {r.reasons.map((x) => <p key={x} className={r.status === "duplicate" ? "text-amber-700" : "text-red-600"}>{x}</p>)}
                         {r.warnings.map((x) => <p key={x} className="text-amber-600">{x}</p>)}
+                        {r.settles?.type && <p className="text-emerald-700">settles an open {r.settles.type === "receivable" ? "invoice" : "bill"}</p>}
+                        {r.settles && !r.settles.type && <p className="text-amber-700">{r.settles.note}</p>}
                       </td>
                     </tr>
                   ))}
@@ -219,8 +228,12 @@ export default function ImportPage() {
           </Card>
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="ghost" onClick={() => { setPreview(null); setFile(null); }}>Start over</Button>
-            <Button onClick={confirm} disabled={busy || preview.summary.accepted - excluded.size <= 0}>{busy && <Spinner />}Import {preview.summary.accepted - excluded.size} rows</Button>
+            <Button onClick={confirm} disabled={busy || toImport <= 0}>{busy && <Spinner />}Import {toImport} rows</Button>
           </div>
+          {editing && (
+            <RowEditor batchId={preview.batch_id} row={editing} onClose={() => setEditing(null)}
+              onSaved={(updated, summary) => setPreview({ ...preview, rows: updated, summary })} />
+          )}
         </div>
       )}
 
@@ -229,7 +242,8 @@ export default function ImportPage() {
           <div className="flex flex-col items-center py-8 text-center">
             <CheckCircle2 className="h-12 w-12 text-emerald-600" />
             <h2 className="mt-3 text-lg font-semibold text-slate-900 dark:text-white">{result.imported} transactions imported</h2>
-            <p className="mt-1 text-sm text-slate-500">{result.skipped_duplicates} duplicates skipped · {result.rejected} rejected · {result.skipped_by_user} skipped by you</p>
+            <p className="mt-1 text-sm text-slate-500">{result.skipped_duplicates} duplicates skipped{result.duplicates_included > 0 && ` · ${result.duplicates_included} confirmed duplicates imported`} · {result.rejected} rejected · {result.skipped_by_user} skipped by you</p>
+            {result.unmatched_payments > 0 && <p className="mt-1 text-xs text-amber-700">{result.unmatched_payments} payment(s) had no matching open invoice/bill and were recorded as income/expense.</p>}
             <div className="mt-5 flex gap-2">
               <Link href="/transactions"><Button variant="outline">Open khata</Button></Link>
               <Link href="/forecast"><Button>See updated forecast</Button></Link>

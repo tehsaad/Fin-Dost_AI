@@ -10,6 +10,7 @@ import { api, downloadFile, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import { CASH_IN, cn, formatDate, formatPKR, KIND_LABEL } from "@/lib/format";
 import type { Paged, Tx } from "@/lib/types";
+import { ChangeHistory } from "./change-history";
 import { TransactionForm } from "./transaction-form";
 
 export function TransactionsTab({ onChanged }: { onChanged?: () => void }) {
@@ -155,6 +156,7 @@ export function TransactionsTab({ onChanged }: { onChanged?: () => void }) {
       </Modal>
       <Modal isOpen={Boolean(editing)} onClose={() => setEditing(null)} title="Edit transaction" description={editing ? KIND_LABEL[editing.kind] : undefined}>
         {editing && <TransactionForm existing={editing} onSaved={() => { setEditing(null); refresh(); }} onCancel={() => setEditing(null)} />}
+        {editing && <ChangeHistory entityId={editing.id} />}
       </Modal>
       <Modal isOpen={Boolean(deleting)} onClose={() => setDeleting(null)} title="Delete transaction?" maxWidth="md">
         {deleting && (

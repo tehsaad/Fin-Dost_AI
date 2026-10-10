@@ -14,6 +14,10 @@ import type { Alert, Dashboard, DataQuality, Forecast, Comparison, ForecastSumma
 
 interface Report {
   generated_at: string;
+  as_of: string;
+  forecast_horizon_days: number;
+  period: { from: string; to: string; days: number; opening_cash_paisa: number; closing_cash_paisa: number; cash_in_paisa: number;
+    cash_out_paisa: number; revenue_paisa: number; expenses_paisa: number; profit_paisa: number };
   business: { name: string; kind: string; city: string | null; is_demo: boolean };
   executive_summary: string[];
   kpis: Dashboard["kpis"];
@@ -55,7 +59,8 @@ export default function ReportsPage() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-brand-700">FinDost AI · Financial report</p>
             <h2 className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{data.business.name}</h2>
-            <p className="text-xs text-slate-500">{data.business.kind.toUpperCase()}{data.business.city ? ` · ${data.business.city}` : ""} · prepared {formatDate(data.generated_at, "long")}{data.business.is_demo ? " · DEMO DATA (fictional)" : ""}</p>
+            <p className="text-xs text-slate-500">{data.business.kind.toUpperCase()}{data.business.city ? ` · ${data.business.city}` : ""} · as of {formatDate(data.as_of, "long")} · generated {new Date(data.generated_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}{data.business.is_demo ? " · SYNTHETIC DEMO DATA (fictional)" : ""}</p>
+            <p className="text-xs text-slate-500">Reporting period {formatDate(data.period.from, "long")} – {formatDate(data.period.to, "long")} ({data.period.days} days) · forecast horizon {data.forecast_horizon_days} days</p>
           </div>
           <p className="max-w-xs text-[11px] text-slate-500">{data.disclaimer}</p>
         </header>
@@ -63,6 +68,23 @@ export default function ReportsPage() {
         <section className="print-avoid">
           <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">Executive summary</h3>
           <ul className="list-disc space-y-1 pl-5 text-sm text-slate-800 dark:text-slate-200">{data.executive_summary.map((s) => <li key={s}>{s}</li>)}</ul>
+        </section>
+
+        <section className="print-avoid">
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">Cash over the period</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {([
+                  ["Opening cash", data.period.opening_cash_paisa], ["+ Cash in", data.period.cash_in_paisa], ["− Cash out", -data.period.cash_out_paisa],
+                  ["= Closing cash", data.period.closing_cash_paisa],
+                ] as [string, number][]).map(([l, v]) => (
+                  <tr key={l} className={l.startsWith("=") ? "font-semibold" : ""}><td className="py-1.5">{l}</td><td className="tabular py-1.5 text-right">{formatPKR(v)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">Revenue {formatPKR(data.period.revenue_paisa)} · expenses {formatPKR(data.period.expenses_paisa)} · estimated profit {formatPKR(data.period.profit_paisa)}. Revenue includes credit sales that are not cash yet, so profit and cash differ.</p>
         </section>
 
         <section className="print-avoid">
