@@ -47,6 +47,7 @@ class CurrentUser:
     id: str
     email: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    is_anonymous: bool = False
 
 
 @lru_cache
@@ -65,7 +66,9 @@ def _decode(token: str) -> dict[str, Any]:
     options = {"require": ["sub", "exp"]}
     try:
         if alg == "HS256":
-            secrets = [s for s in (settings.supabase_jwt_secret, settings.dev_auth_secret) if s]
+            # The developer secret is never honoured in production, even if it is set by mistake.
+            dev_secret = settings.dev_auth_secret if settings.environment != "production" else None
+            secrets = [s for s in (settings.supabase_jwt_secret, dev_secret) if s]
             if not secrets:
                 raise ApiError(401, "invalid_token", "HS256 tokens are not accepted")
             last_exc: Exception | None = None
@@ -94,8 +97,8 @@ def get_current_user(authorization: str | None = Header(default=None)) -> Curren
     if claims.get("role") not in (None, "authenticated"):
         raise ApiError(401, "unauthorized", "Not a signed-in user")
     meta = claims.get("user_metadata") or {}
-    return CurrentUser(id=str(claims["sub"]), email=claims.get("email"),
-                       metadata=meta if isinstance(meta, dict) else {})
+    return CurrentUser(id=str(claims["sub"]), email=claims.get("email") or None,
+                       metadata=meta if isinstance(meta, dict) else {}, is_anonymous=claims.get("is_anonymous") is True)
 
 
 def get_business(
@@ -104,6 +107,10 @@ def get_business(
     business = db.scalar(select(Business).where(Business.owner_id == user.id))
     if business is None:
         raise ApiError(409, "onboarding_required", "Choose your account type to get started")
+    if business.is_anonymous and not user.is_anonymous:
+        # The demo user added an email and password: keep the workspace (no longer auto-deleted).
+        business.is_anonymous = False
+        db.commit()
     from .services.seed import rebase_demo_dates
 
     rebase_demo_dates(db, business)

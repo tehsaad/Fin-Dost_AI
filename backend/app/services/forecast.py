@@ -381,8 +381,9 @@ def build_components(snap: Snapshot, today: date, horizon: int = 30) -> Componen
                 "wape_pct": round(results[chosen]["mae"] * 7 / weekly_income * 100, 1) if weekly_income else None,
                 "method": "rolling-origin back-test: 4 origins x 7-day horizon, trained only on data before each origin",
                 "band": {"method": "backtest_rmse", "sigma_daily_paisa": int(sigma),
-                         "note": "80% band = 1.28 x back-test daily error (RMSE) x sqrt(days ahead). It covers "
-                                 "everyday sales/expense variation only, not late customers or unrecorded bills."},
+                         "note": "Band = 1.28 x back-test daily error (RMSE) x sqrt(days ahead): an 80% range for "
+                                 "everyday sales/expense variation only. It does not include late customer payments or "
+                                 "unrecorded bills, so the real range is wider (see the SDG Impact page for measured coverage)."},
             }
             fit = MODELS[chosen][1]
         else:

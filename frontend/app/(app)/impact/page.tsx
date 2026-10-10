@@ -15,6 +15,8 @@ interface Impact {
       businesses_evaluated: number; labelled_shortages: number; labelled_shortage_rate_pct: number; shortages_identified: number;
       model: Metrics; naive_baseline: Metrics; avg_warning_lead_days: number | null; median_abs_error_day14_paisa: number;
       naive_median_abs_error_day14_paisa: number; definitions: Record<string, string>; version: string; generated_at: string | null;
+      average_baseline_median_abs_error_day14_paisa: number; band_coverage_day14_pct: number;
+      band_coverage_day14_with_invoices_pct: number; band_coverage_day14_without_invoices_pct: number;
       config: { seed: number; n: number; history_days: number; horizon_days: number };
       recovery_scenarios_evaluated: number; avg_min_balance_gain_paisa: number; method: string; limitations: string;
     };
@@ -80,7 +82,7 @@ export default function ImpactPage() {
                 <div key={l as string} className={`rounded-md p-3 ${c}`}><p className="tabular text-2xl font-semibold">{v as number}</p><p>{l as string}</p></div>
               ))}
             </div>
-            <p className="mt-3 text-xs text-slate-600 dark:text-slate-300">Median balance error at day 14: <strong className="tabular">{formatPKR(b.median_abs_error_day14_paisa)}</strong> (naive baseline {formatPKR(b.naive_median_abs_error_day14_paisa)}). False alarms: <strong>{b.model.false_positive_rate}%</strong> of no-shortage businesses (naive rule {b.naive_baseline.false_positive_rate}%). Average improvement of the lowest balance from the best recovery plan: <strong className="tabular">{formatPKR(b.avg_min_balance_gain_paisa)}</strong>.</p>
+            <p className="mt-3 text-xs text-slate-600 dark:text-slate-300">Median balance error at day 14: <strong className="tabular">{formatPKR(b.median_abs_error_day14_paisa)}</strong> (naive bills-only baseline {formatPKR(b.naive_median_abs_error_day14_paisa)}, historical-average baseline {formatPKR(b.average_baseline_median_abs_error_day14_paisa)}). The forecast band contained the real day-14 balance for <strong>{b.band_coverage_day14_pct}%</strong> of businesses — {b.band_coverage_day14_without_invoices_pct}% without open invoices but only {b.band_coverage_day14_with_invoices_pct}% with them, because it does not model late customer payments. False alarms: <strong>{b.model.false_positive_rate}%</strong> of no-shortage businesses (naive rule {b.naive_baseline.false_positive_rate}%). Average improvement of the lowest balance from the best recovery plan: <strong className="tabular">{formatPKR(b.avg_min_balance_gain_paisa)}</strong>.</p>
           </Card>
         </div>
         <Notice tone="warning">{b.limitations}</Notice>

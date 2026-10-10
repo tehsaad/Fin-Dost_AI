@@ -26,7 +26,11 @@ INTENTS: list[tuple[str, tuple[str, ...]]] = [
     ("explain_dashboard", (r"explain", r"samjha", r"سمجھا", r"dashboard", r"summary", r"overview", r"خلاصہ")),
     ("affordability", (r"afford", r"can i (buy|spend|pay)", r"kharid", r"khareed", r"خرید", r"le sakta", r"purchase")),
     ("sales_decline", (r"sales? (drop|decrease|decline|fall|down|go down|kam)", r"(decrease|drop|fall|decline) in sales",
-                       r"bikri kam", r"فروخت کم")),
+                       r"\bsales?\b.{0,25}\bkam\b", r"\bagar\b.{0,20}\bsales?\b", r"bikri kam", r"فروخت کم")),
+    ("overdue", (r"overdue", r"\blate (payments?|bills?|invoices?)", r"past due", r"due date (guzar|nikal)", r"baqaya",
+                 r"واجب الادا", r"تاخیر")),
+    ("upcoming_expense", (r"(biggest|largest|next|upcoming|coming).{0,25}(expense|bill|payment|outflow|kharch)",
+                          r"(bara|bari|sab se bar).{0,25}(kharch|bill|adaigi|payment)", r"aane wal", r"آنے وال")),
     ("why_risk", (r"why", r"\brisk", r"khatra", r"kyun", r"کیوں", r"خطرہ", r"shortage")),
     ("follow_up", (r"follow.?up", r"invoice", r"which customers", r"wasool", r"وصول", r"collect", r"remind", r"udhaar", r"ادھار")),
     ("after_suppliers", (r"supplier", r"after (paying|scheduled)", r"bills? due", r"remain", r"bach")),
@@ -93,6 +97,13 @@ def parse_day_from_text(text: str, today: date) -> int:
     return 7  # "next week" and default
 
 
+def _find_party(snap: Snapshot, low: str) -> tuple[str, str, str] | None:
+    """A customer or supplier named in the question (longest name wins)."""
+    names = [("customer", i, n) for i, n in snap.customers.items()] + [("supplier", i, n) for i, n in snap.suppliers.items()]
+    hits = [x for x in names if len(x[2]) >= 3 and x[2].lower() in low]
+    return max(hits, key=lambda x: len(x[2])) if hits else None
+
+
 def _percent(text: str, default: int = 20) -> int:
     m = re.search(r"(\d{1,3})\s*(%|percent|fisad)", text.lower())
     return min(int(m.group(1)), 100) if m else default
@@ -110,6 +121,9 @@ def answer(snap: Snapshot, today: date, question: str, language: str = "en",
                       "میں صرف آپ کے FinDost ریکارڈ سے جواب دے سکتا ہوں۔ اس سوال کا جواب آپ کے ریکارڈ میں موجود نہیں۔",
                       [], {})
     intent = detect_intent(question)
+    party = _find_party(snap, low)
+    if party and intent in ("unknown", "follow_up", "spending", "balance", "overdue"):
+        intent = "party"
     forecast = run_forecast(snap, today, 30)
     s = forecast["summary"]
     ev: list[str] = []
@@ -176,6 +190,68 @@ def answer(snap: Snapshot, today: date, question: str, language: str = "en",
         ur = (f"اگر اگلے 30 دن فروخت {pct}% کم ہو تو سب سے کم نقدی {fmt_pkr(after['min_balance_paisa'])} ہو سکتی ہے، "
               f"اور 30 دن بعد نقدی {fmt_pkr(-c['end_balance_change_paisa'])} کم ہوگی۔ یہ صرف اندازہ ہے۔")
         return _reply("sales_decline", lang, en, ur, ev, {"comparison": c, "scenario": after}, links=["/simulator"])
+
+    if intent == "overdue":
+        late_in = sorted([r for r in snap.receivables if r.outstanding and r.due_on < today], key=lambda r: r.due_on)
+        late_out = sorted([p for p in snap.payables if p.outstanding and p.due_on < today], key=lambda p: p.due_on)
+        if not late_in and not late_out:
+            return _reply("overdue", lang, "Nothing is overdue: no customer invoice or bill in your records is past its due date.",
+                          "کوئی ادائیگی تاخیر میں نہیں: آپ کے ریکارڈ میں کوئی وصولی یا بل مقررہ تاریخ سے آگے نہیں۔", [], {})
+        ev = [f"Owed to you: {r.customer_name} {r.reference or ''} {fmt_pkr(r.outstanding)}, {(today - r.due_on).days} days late"
+              for r in late_in[:6]]
+        ev += [f"You owe: {p.label} {fmt_pkr(p.outstanding)}, {(today - p.due_on).days} days late" for p in late_out[:6]]
+        parts = []
+        if late_in:
+            parts.append(f"{len(late_in)} customer invoice(s) totalling {fmt_pkr(sum(r.outstanding for r in late_in))} are overdue "
+                         f"(oldest: {late_in[0].customer_name}, {(today - late_in[0].due_on).days} days)")
+        if late_out:
+            parts.append(f"you have {len(late_out)} overdue bill(s) totalling {fmt_pkr(sum(p.outstanding for p in late_out))} "
+                         f"(oldest: {late_out[0].label}, {(today - late_out[0].due_on).days} days)")
+        joined = "; ".join(parts)
+        en = joined[0].upper() + joined[1:] + "."
+        ur = (f"{len(late_in)} وصولیاں ({fmt_pkr(sum(r.outstanding for r in late_in))}) اور {len(late_out)} بل "
+              f"({fmt_pkr(sum(p.outstanding for p in late_out))}) تاخیر میں ہیں۔")
+        return _reply("overdue", lang, en, ur, ev, {"receivable_ids": [r.id for r in late_in], "payable_ids": [p.id for p in late_out]},
+                      links=["/transactions?tab=receivables", "/transactions?tab=payables"])
+
+    if intent == "upcoming_expense":
+        outs = sorted([e for e in forecast["events"] if e["amount_paisa"] < 0 and e["kind"] in ("payable", "recurring_out")],
+                      key=lambda e: e["amount_paisa"])
+        if not outs:
+            return _reply("upcoming_expense", lang,
+                          "No recorded bills or detected monthly payments fall in the next 30 days. Everyday spending is in the forecast, "
+                          "but no single large payment is scheduled.",
+                          "اگلے 30 دن میں کوئی درج شدہ بڑا بل یا ماہانہ ادائیگی نہیں۔", [], {})
+        top = outs[0]
+        basis = "a recorded bill" if top["certainty"] == "recorded" else "estimated from your monthly pattern"
+        ev = [f"{e['date']}: {e['label']} {fmt_pkr(-e['amount_paisa'])} ({e['certainty']})" for e in outs[:5]]
+        en = (f"Your biggest upcoming payment is {top['label']}: {fmt_pkr(-top['amount_paisa'])} on {top['date']} ({basis}). "
+              f"The next largest: " + "; ".join(f"{e['label']} {fmt_pkr(-e['amount_paisa'])} on {e['date']}" for e in outs[1:3]) + ".")
+        if len(outs) == 1:
+            en = en.split(" The next largest")[0]
+        ur = f"سب سے بڑی آنے والی ادائیگی {top['label']} ہے: {fmt_pkr(-top['amount_paisa'])}، تاریخ {top['date']}۔"
+        return _reply("upcoming_expense", lang, en, ur, ev, {"events": outs[:5]}, links=["/forecast"])
+
+    if intent == "party":
+        kind, pid, name = party
+        if kind == "customer":
+            recs = [r for r in snap.receivables if r.customer_id == pid]
+            owed, paid = sum(r.outstanding for r in recs), sum(r.paid for r in recs)
+            late = [r for r in recs if r.outstanding and r.due_on < today]
+            ev = [f"{r.reference or r.issued_on.isoformat()}: {fmt_pkr(r.amount)} invoiced, {fmt_pkr(r.paid)} paid, "
+                  f"{fmt_pkr(r.outstanding)} open, due {r.due_on.isoformat()}" for r in recs[:8]]
+            en = (f"{name} has {len(recs)} invoice(s): {fmt_pkr(sum(r.amount for r in recs))} invoiced, {fmt_pkr(paid)} paid so far "
+                  f"and {fmt_pkr(owed)} still owed" + (f", of which {fmt_pkr(sum(r.outstanding for r in late))} is overdue." if late else "."))
+            ur = f"{name} نے اب تک {fmt_pkr(paid)} ادا کیے ہیں اور {fmt_pkr(owed)} باقی ہیں۔"
+        else:
+            pays = [p for p in snap.payables if p.supplier_id == pid]
+            owed, paid = sum(p.outstanding for p in pays), sum(p.paid for p in pays)
+            ev = [f"{p.reference or p.issued_on.isoformat()}: {fmt_pkr(p.amount)} billed, {fmt_pkr(p.paid)} paid, due {p.due_on.isoformat()}"
+                  for p in pays[:8]]
+            en = f"You have paid {name} {fmt_pkr(paid)} against {len(pays)} bill(s) and still owe {fmt_pkr(owed)}."
+            ur = f"آپ {name} کو {fmt_pkr(paid)} ادا کر چکے ہیں اور {fmt_pkr(owed)} باقی ہیں۔"
+        return _reply("party", lang, en, ur, ev, {"party": {"type": kind, "id": pid, "name": name}},
+                      links=["/transactions?tab=receivables" if kind == "customer" else "/transactions?tab=payables"])
 
     if intent == "follow_up":
         if not snap.receivables:

@@ -33,7 +33,7 @@ from ..services.categories import EXPENSE_CATEGORIES, INCOME_CATEGORIES, categor
 from ..services.i18n import isolate_ltr
 from ..services.ingestion import dedupe_key
 from ..services.ledger import account_balances, payable_view, receivable_view
-from .common import context, csv_safe, get_or_create_customer, get_or_create_supplier, owned
+from .common import check_capacity, context, csv_safe, get_or_create_customer, get_or_create_supplier, owned
 
 router = APIRouter(tags=["ledger"])
 
@@ -143,6 +143,7 @@ def get_transaction(tx_id: str, business: Business = Depends(require_feature("le
 def create_transaction(body: TransactionIn, business: Business = Depends(require_feature("ledger")),
                        db: Session = Depends(get_db)):
     _check_date(body.occurred_on)
+    check_capacity(db, business)
     kind = body.kind
     direction = "in" if kind in ("income", "credit_sale", "customer_payment", "loan_received") else "out"
     category = body.category

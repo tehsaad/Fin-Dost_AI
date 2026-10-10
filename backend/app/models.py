@@ -74,6 +74,8 @@ class Business(Base):
     opening_wallet_paisa: Mapped[int] = mapped_column(BigInteger, default=0)
     cash_reserve_paisa: Mapped[int] = mapped_column(BigInteger, default=0)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Owner signed in anonymously ("private demo"): tighter limits, deleted after DEMO_TTL_DAYS unless upgraded.
+    is_anonymous: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     demo_anchor: Mapped[date | None] = mapped_column(Date, nullable=True)
     ai_consent: Mapped[bool] = mapped_column(Boolean, default=False)
     language: Mapped[str] = mapped_column(String(5), default="en")

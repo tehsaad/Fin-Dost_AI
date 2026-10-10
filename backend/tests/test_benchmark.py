@@ -26,5 +26,5 @@ def test_benchmark_reports_definitions_baseline_and_false_alarms():
 
 def test_public_benchmark_is_labelled_synthetic(client):
     body = client.get("/api/v1/public/benchmark").json()
-    assert "synthetic" in body["note"].lower() and body["version"] == "benchmark-v2"
+    assert "synthetic" in body["note"].lower() and body["version"] == "benchmark-v3"
     assert body["naive_recall_pct"] >= 0 and body["false_positive_rate_pct"] >= 0

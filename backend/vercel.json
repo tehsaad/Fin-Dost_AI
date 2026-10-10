@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "fastapi"
+  "framework": "fastapi",
+  "crons": [
+    {
+      "path": "/api/v1/internal/cleanup-demos",
+      "schedule": "30 21 * * *"
+    }
+  ]
 }

@@ -28,7 +28,7 @@ from .snapshot import Pay, Rec, Snapshot, Tx
 
 HISTORY = 63
 HORIZON = 14
-BENCHMARK_VERSION = "benchmark-v2"
+BENCHMARK_VERSION = "benchmark-v3"
 STORED = Path(__file__).resolve().parent.parent / "data" / "benchmark.json"
 
 DEFINITIONS = {
@@ -46,6 +46,11 @@ DEFINITIONS = {
     "balance_error": "Absolute difference between forecast and realised balance on day 14 (rupees); the naive "
                      "baseline forecast is today's balance minus recorded bills, ignoring sales and collections.",
     "naive_rule": "Warn if today's balance minus recorded bills due within 14 days is below zero.",
+    "average_baseline": "Today's balance plus 14 x the average daily net cash flow of the 63-day history "
+                        "(the 'historical average' forecast; ignores recorded bills and invoices).",
+    "band_coverage": "Share of businesses whose realised day-14 balance fell inside the forecast band. The band is "
+                     "sized as an 80% range for everyday sales/expense noise only; it does not model late customer "
+                     "payments, so coverage is reported separately for businesses with and without open invoices.",
 }
 
 SDG_TARGETS = [
@@ -165,7 +170,8 @@ def run_benchmark(seed: int = 2026, n: int = 120, today_iso: str = "2026-01-15")
     rng = random.Random(seed)
     tp = fp = tn = fn = 0
     btp = bfp = btn = bfn = 0
-    lead_times, abs_err_14, naive_err_14 = [], [], []
+    lead_times, abs_err_14, naive_err_14, avg_err_14 = [], [], [], []
+    covered: list[tuple[bool, bool]] = []  # (inside band, has open invoices)
     recovery_runs = 0
     gains = []
     for i in range(n):
@@ -192,8 +198,12 @@ def run_benchmark(seed: int = 2026, n: int = 120, today_iso: str = "2026-01-15")
             bfn += 1
         else:
             btn += 1
-        abs_err_14.append(abs(res["points"][HORIZON]["balance_paisa"] - case.realised[HORIZON]))
+        p14 = res["points"][HORIZON]
+        abs_err_14.append(abs(p14["balance_paisa"] - case.realised[HORIZON]))
         naive_err_14.append(abs(_naive_day14(case, today) - case.realised[HORIZON]))
+        hist_net = sum(t.amount if t.kind == "income" else -t.amount for t in case.snap.txs) / HISTORY
+        avg_err_14.append(abs(case.realised[0] + HORIZON * hist_net - case.realised[HORIZON]))
+        covered.append((p14["low_paisa"] <= case.realised[HORIZON] <= p14["high_paisa"], bool(case.snap.receivables)))
         if pred and i % 3 == 0:  # evaluate recovery on a subset to keep the endpoint fast
             rec = recommend(case.snap, today, [], HORIZON)
             recovery_runs += len(rec["strategies"])
@@ -225,6 +235,12 @@ def run_benchmark(seed: int = 2026, n: int = 120, today_iso: str = "2026-01-15")
         "mean_abs_error_day14_paisa": int(np.mean(abs_err_14)),
         "naive_median_abs_error_day14_paisa": int(np.median(naive_err_14)),
         "naive_mean_abs_error_day14_paisa": int(np.mean(naive_err_14)),
+        "average_baseline_median_abs_error_day14_paisa": int(np.median(avg_err_14)),
+        "band_coverage_day14_pct": round(sum(c for c, _ in covered) / n * 100, 1),
+        "band_coverage_day14_without_invoices_pct": round(
+            sum(c for c, r in covered if not r) / max(sum(1 for _, r in covered if not r), 1) * 100, 1),
+        "band_coverage_day14_with_invoices_pct": round(
+            sum(c for c, r in covered if r) / max(sum(1 for _, r in covered if r), 1) * 100, 1),
         "recovery_scenarios_evaluated": recovery_runs,
         "avg_min_balance_gain_paisa": int(np.mean(gains)) if gains else 0,
         "method": ("Synthetic micro-businesses (fixed seed). The forecaster sees 9 weeks of history plus recorded bills and "

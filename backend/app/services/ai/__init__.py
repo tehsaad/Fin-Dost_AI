@@ -63,7 +63,8 @@ def run(req: AIRequest) -> AIResult:
 
 def consume_quota(db: Session, business: Business, task: str, today: date) -> int:
     """Count one AI call for today; refuse once the daily limit is reached. Returns calls left."""
-    limit = get_settings().ai_daily_limit
+    settings = get_settings()
+    limit = settings.anon_ai_daily_limit if business.is_anonymous else settings.ai_daily_limit
     for _ in range(2):
         row = db.scalar(select(AiUsage).where(AiUsage.business_id == business.id, AiUsage.day == today,
                                              AiUsage.task == task).with_for_update())

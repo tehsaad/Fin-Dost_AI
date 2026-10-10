@@ -63,7 +63,7 @@ export default function ForecastPage() {
         ))}
       </div>
 
-      <Card title="Projected daily balance" subtitle={`Risk level: ${s.shortage_risk.toUpperCase()} · ${s.band_available ? (m.band?.method === "history_std" ? "shaded band = rough range (not back-tested)" : "shaded band = likely range from back-test errors (≈80%)") : "no uncertainty band (not enough history)"} · red line = Rs. 0${s.reserve_paisa ? " · amber = your reserve" : ""}`}
+      <Card title="Projected daily balance" subtitle={`Risk level: ${s.shortage_risk.toUpperCase()} · ${s.band_available ? (m.band?.method === "history_std" ? "shaded band = rough range (not back-tested)" : "shaded band = everyday sales/spending variation (not late customers)") : "no uncertainty band (not enough history)"} · red line = Rs. 0${s.reserve_paisa ? " · amber = your reserve" : ""}`}
         action={<LevelBadge level={s.shortage_risk} />}>
         <BalanceChart history={data.history} points={data.points} reserve={s.reserve_paisa} shortageDate={s.shortage_date} height={340} />
         {m.band && <p className="mt-2 text-[11px] text-slate-500">{m.band.note}</p>}

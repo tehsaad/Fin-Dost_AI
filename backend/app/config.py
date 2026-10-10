@@ -34,6 +34,10 @@ class Settings:
     groq_model: str
     llm_timeout_seconds: float
     ai_daily_limit: int
+    anon_ai_daily_limit: int
+    anon_max_transactions: int
+    demo_ttl_days: int
+    cron_secret: str | None
     today_override: str | None
     max_upload_bytes: int
     environment: str
@@ -58,6 +62,11 @@ def get_settings() -> Settings:
         groq_model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
         llm_timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "12")),
         ai_daily_limit=int(os.getenv("AI_DAILY_LIMIT", "60")),
+        # Private demo workspaces (anonymous sign-ins) get tighter limits and are deleted after DEMO_TTL_DAYS.
+        anon_ai_daily_limit=int(os.getenv("ANON_AI_DAILY_LIMIT", "10")),
+        anon_max_transactions=int(os.getenv("ANON_MAX_TRANSACTIONS", "3000")),
+        demo_ttl_days=int(os.getenv("DEMO_TTL_DAYS", "7")),
+        cron_secret=os.getenv("CRON_SECRET") or None,
         today_override=os.getenv("FINDOST_TODAY") or None,
         max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024))),
         environment=os.getenv("ENVIRONMENT", "development"),

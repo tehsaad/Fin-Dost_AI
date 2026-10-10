@@ -20,7 +20,7 @@ from ..services.ai import tasks as ai_tasks
 from ..services.categories import categorize
 from ..services.ingestion import (TEMPLATES, IngestionError, Settler, annotate_settlements, build_preview, correct_row,
                                   dedupe_key, read_csv, summarize)
-from .common import context, get_or_create_customer, get_or_create_supplier, owned
+from .common import check_capacity, context, get_or_create_customer, get_or_create_supplier, owned
 
 router = APIRouter(tags=["import"])
 
@@ -78,6 +78,8 @@ async def receipt(file: UploadFile = File(...), business: Business = Depends(req
                   db: Session = Depends(get_db)):
     """Read a receipt/invoice photo or PDF with AI into a preview row. Nothing is saved to the ledger:
     the user reviews (and can correct) the row, then confirms it like any CSV import."""
+    if business.is_anonymous:
+        raise ApiError(403, "account_required", "Receipt reading needs a free account (Settings → keep this workspace).")
     if not business.ai_consent:
         raise ApiError(403, "ai_consent_required",
                        "Turn on AI assistance in Settings first: the document is sent to Google Gemini to be read.")
@@ -155,6 +157,7 @@ def confirm(body: ImportConfirmIn, business: Business = Depends(require_feature(
     if batch.status != "preview":
         raise ApiError(409, "already_processed", f"This import was already {batch.status}")
     snap, _ = context(db, business)
+    check_capacity(db, business, sum(1 for r in batch.rows if r["status"] != "rejected"))
     existing = {dedupe_key(t.occurred_on, t.amount, t.kind, t.description) for t in snap.txs}
     excluded, forced = set(body.exclude_rows), set(body.include_duplicates)
     imported = skipped_dup = skipped_user = rejected = unmatched = 0

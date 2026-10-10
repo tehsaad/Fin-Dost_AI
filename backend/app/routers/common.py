@@ -43,6 +43,22 @@ def forecast_and_store(db: Session, business: Business, snap: Snapshot, today: d
     return result
 
 
+def check_capacity(db: Session, business: Business, adding: int = 1) -> None:
+    """Private demo workspaces have a transaction cap so anonymous visitors cannot grow the database unbounded."""
+    if not business.is_anonymous:
+        return
+    from sqlalchemy import func
+
+    from ..config import get_settings
+    from ..models import Transaction
+
+    cap = get_settings().anon_max_transactions
+    count = db.scalar(select(func.count()).select_from(Transaction).where(Transaction.business_id == business.id)) or 0
+    if count + adding > cap:
+        raise ApiError(403, "demo_limit", f"Private demo workspaces hold up to {cap:,} transactions. "
+                                          "Create a free account in Settings to keep adding records.")
+
+
 def get_or_create_customer(db: Session, business: Business, customer_id: str | None, name: str | None) -> Customer:
     if customer_id:
         c = db.get(Customer, customer_id)

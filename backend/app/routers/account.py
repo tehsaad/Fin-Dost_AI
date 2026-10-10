@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..auth import FEATURES, CurrentUser, get_business, get_current_user
+from ..config import get_settings
 from ..config import today as get_today
 from ..db import get_db
 from ..errors import ApiError
@@ -38,6 +39,9 @@ def business_dict(b: Business) -> dict:
         "is_demo": b.is_demo, "ai_consent": b.ai_consent, "language": b.language,
         "recovery_weights": b.recovery_weights or DEFAULT_WEIGHTS,
         "features": sorted(FEATURES[b.kind]),
+        "is_anonymous": b.is_anonymous,
+        "demo_expires_on": ((b.created_at.date() + timedelta(days=get_settings().demo_ttl_days)).isoformat()
+                            if b.is_anonymous and b.created_at else None),
     }
 
 
@@ -48,7 +52,8 @@ def me(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_
         rebase_demo_dates(db, business)
     suggested = user.metadata.get("account_type")
     return {
-        "user": {"id": user.id, "email": user.email, "name": user.metadata.get("full_name") or user.metadata.get("name")},
+        "user": {"id": user.id, "email": user.email, "name": user.metadata.get("full_name") or user.metadata.get("name"),
+                 "is_anonymous": user.is_anonymous},
         "business": business_dict(business) if business else None,
         "needs_onboarding": business is None,
         "suggested_kind": suggested if suggested in FEATURES else None,
@@ -62,7 +67,7 @@ def onboarding(body: OnboardingIn, user: CurrentUser = Depends(get_current_user)
         raise ApiError(409, "already_onboarded", "This account already has a workspace. Account types cannot be switched.")
     today = get_today()
     business = Business(owner_id=user.id, name=body.business_name, kind=body.kind, city=body.city,
-                        opening_date=today, language="en")
+                        opening_date=today, language="en", is_anonymous=user.is_anonymous)
     db.add(business)
     try:
         db.flush()
