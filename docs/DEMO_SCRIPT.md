@@ -1,7 +1,7 @@
 # FinDost AI — 5-minute demo script
 
 Open https://findostai.vercel.app. All demo data is fictional and re-anchors to today's date, so the story
-below is the same on any day. If someone changed a demo account, use **Settings → Reset demo data** first.
+below is the same on any day. Each private demo is your own copy, so **Settings → Reset demo data** only affects you.
 
 ## 0:00 – 0:30 · The problem (landing page)
 - "Pakistani shopkeepers run on udhaar. A shop can be profitable on paper and still run out of cash, because
@@ -9,8 +9,9 @@ below is the same on any day. If someone changed a demo account, use **Settings 
 - Scroll the landing page once: early warning → shock test → recovery plan. Click **Sign in**.
 
 ## 0:30 – 1:00 · Secure login and account types
-- Point out the Cloudflare captcha and the Google button.
-- Click the **Small business** demo card (fills `sme@demo.findost.app`), complete the check, sign in.
+- Point out the Cloudflare captcha and that real accounts need email verification.
+- Under **Try a private demo**, complete the check and click **Small business**: a private workspace with
+  synthetic data opens — nobody else can see or reset it.
 - "Each login belongs to one account type — shop, enterprise, household or student — and that decides which
   modules exist for it, enforced by the server, not just hidden in the UI."
 
@@ -45,7 +46,7 @@ below is the same on any day. If someone changed a demo account, use **Settings 
 ## 4:30 – 5:00 · Breadth and impact
 - **Import:** upload the messy sample CSV → dates, amounts and categories normalised, duplicates flagged; fix a
   rejected row with the pencil, then import. **Reports → CSV** downloads the same figures shown on screen.
-- Sign out, sign in as **Student** → a smaller budget app with no inventory module; `/inventory` says it's not part
+- Sign out, open a **Student** private demo → a smaller budget app with no inventory module; `/inventory` says it's not part
   of this account type.
 - **Impact:** on a held-out synthetic benchmark of 120 businesses, the forecast catches **96%** of shortages within
   14 days with about **8 days** of warning. A naive "cash minus bills" rule catches them all too, but wrongly warns

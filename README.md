@@ -6,8 +6,9 @@ stress-tests shocks, and ranks concrete recovery actions — in English and Urdu
 
 **Live:** https://findostai.vercel.app  ·  API: https://findost-api.vercel.app/api/v1/health
 
-Demo logins (fictional data, password `FinDost-Demo-2026`): `sme@demo.findost.app`, `enterprise@demo.findost.app`,
-`household@demo.findost.app`, `student@demo.findost.app`. The login page has one-click buttons that fill these in.
+**Try it:** on the sign-in page choose **Try a private demo** (shop, enterprise, household or student). Each visitor
+gets their own workspace with synthetic data — nobody else can see or change it — deleted after 7 days unless you
+keep it by adding your email in Settings. Real accounts need email verification.
 
 ## Architecture
 
@@ -60,7 +61,8 @@ the engine already computed and reads receipts into proposals the user must revi
 frontend/   Next.js app (landing, login/signup/onboarding, 13 app pages)
 backend/    FastAPI app (app/services = engine, app/routers = API), tests, scripts
 supabase/   config.toml (auth settings) and SQL migrations (initial schema + audit/AI-usage tables)
-docs/       TECHNICAL_AUDIT, IMPLEMENTATION_PLAN, TEST_REPORT, DEMO_SCRIPT
+docs/       ARCHITECTURE, FORECAST_METHODOLOGY, SECURITY, DEPLOYMENT, TESTING, BASELINE_AUDIT,
+            IMPLEMENTATION_REPORT, DEMO_SCRIPT (+ pass-1 TECHNICAL_AUDIT, IMPLEMENTATION_PLAN)
 scripts/    e2e-journey.cjs (browser check of the demo journey)
 ```
 
@@ -73,7 +75,7 @@ cd backend
 python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 DATABASE_URL=sqlite:///./local.db DEV_AUTH_SECRET=local-dev-secret-change-me-0123456789 \
   .venv/bin/uvicorn app.main:app --port 8000
-.venv/bin/python -m pytest          # 80 tests, no network or API keys needed
+.venv/bin/python -m pytest          # 88 tests, no network or API keys needed
 ```
 
 Frontend (Node 20+), developer sign-in without Supabase:
@@ -103,11 +105,15 @@ Backend (`backend/.env.example`):
 | `GROQ_API_KEY`, `GROQ_MODEL` | Optional. Explanations in English / Urdu / Roman Urdu. Default model `openai/gpt-oss-20b` (strict JSON schema) |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | Optional. Receipt/bill reading and fallback for explanations. Default `gemini-3.5-flash-lite` |
 | `LLM_TIMEOUT_SECONDS`, `AI_DAILY_LIMIT` | AI request timeout (12 s) and per-workspace daily AI request cap (60), stored in the database |
+| `ANON_AI_DAILY_LIMIT`, `ANON_MAX_TRANSACTIONS`, `DEMO_TTL_DAYS` | Private-demo limits (10 AI calls/day, 3,000 transactions, deleted after 7 days) |
+| `CRON_SECRET` | Authenticates the daily Vercel Cron that deletes expired private demos |
 | `FINDOST_TODAY` | Pin "today" for reproducible tests |
 | `MAX_UPLOAD_BYTES`, `ENVIRONMENT` | Upload limit, environment label |
 
 Frontend (`frontend/.env.example`): `API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED`, `NEXT_PUBLIC_AUTH_MODE`, `DEV_AUTH_SECRET` (dev only).
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED`, `NEXT_PUBLIC_AUTH_MODE`, `NEXT_PUBLIC_SITE_URL`
+(canonical URL for SEO), `DEV_AUTH_SECRET` (dev only). Supabase Auth also needs `TURNSTILE_SECRET_KEY` and
+`RESEND_API_KEY` when running `supabase config push` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 ## AI providers
 
@@ -144,14 +150,14 @@ Order matters when the schema changes: **migrate first, then deploy the backend,
 
 ## Testing
 
-- `backend/tests` — 80 tests: hand-calculated ledger reconciliation across dashboard/report/exports, forecast edge
+- `backend/tests` — 88 tests (incl. the 12-step workflow, private-demo isolation and cleanup, developer-auth guard): hand-calculated ledger reconciliation across dashboard/report/exports, forecast edge
   cases (leap day, negative balance, no data), exact shock arithmetic, alert evidence, CSV import (settlement,
   duplicates, corrections, atomicity), cross-user isolation on 14 routes, AI routing/fallback/validation with mocked
   HTTP, benchmark reproducibility, auth and module separation.
-- `frontend` — `npm test` (Vitest: money parsing/formatting), `npm run lint`, `npm run typecheck`, `npm run build`.
+- `frontend` — `npm test` (Vitest: money parsing/formatting, API failure handling), `npm run lint`, `npm run typecheck`, `npm run build`.
 - `scripts/e2e-journey.cjs` — headless Chrome through the 10-step demo journey.
 
-Results and what is still unverified: [docs/TEST_REPORT.md](docs/TEST_REPORT.md).
+Results and what is still unverified: [docs/TESTING.md](docs/TESTING.md).
 
 ## Known limitations
 
@@ -163,8 +169,8 @@ Results and what is still unverified: [docs/TEST_REPORT.md](docs/TEST_REPORT.md)
 - The demo is a single-currency (PKR) design; amounts in other currencies are flagged, not converted.
 - Enterprise multi-site, tax previews and credit profiles are not built; the enterprise workspace uses the SME modules.
 - AI quotas are per workspace per day; there is no per-minute application rate limit beyond the providers' own.
-- Email confirmation is off so judges can sign up instantly; turn it on in Supabase Auth for real users.
-- Demo logins are shared; anyone can reset their data from Settings.
+- The forecast band covers everyday sales/spending noise only; measured coverage is 43% overall (31% for businesses
+  with open invoices). See [docs/FORECAST_METHODOLOGY.md](docs/FORECAST_METHODOLOGY.md).
 - Supabase free projects pause after a week of inactivity.
 
 See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the 5-minute demo.
