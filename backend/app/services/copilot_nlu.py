@@ -25,6 +25,16 @@ TOOL_INTENTS = ("balance", "why_risk", "follow_up", "overdue", "expense_compare"
                 "explain_dashboard", "performance", "party", "glossary")
 SCENARIO_INTENTS = ("sales_decline", "delayed_collection", "scenario")
 PARAM_KEYS = ("percent", "delay_days", "amount_paisa", "day")
+# Parameters each tool actually uses; only these are carried between turns.
+RELEVANT = {"sales_decline": ("percent",), "delayed_collection": ("delay_days",), "scenario": ("percent", "delay_days"),
+            "affordability": ("amount_paisa", "day"), "balance": ("day",)}
+
+
+def relevant_params(intent: str | None, params: dict) -> dict:
+    keys = RELEVANT.get(intent or "", ())
+    if intent == "sales_decline" or intent == "delayed_collection":
+        keys = RELEVANT["scenario"]  # a sales scenario can grow into a combined one
+    return {k: v for k, v in params.items() if k in keys and v is not None}
 
 CONFIDENT = 3.0
 WEAK = 1.5
@@ -107,6 +117,8 @@ _COMPILED = {k: [re.compile(p) for p in v] for k, v in CONCEPTS.items()}
 
 GLOSSARY_Q = (re.compile(r"\bwhat (is|are|does) (a |an |the )?(receivable|payable|cash ?flow|profit|reserve|forecast|shortage|udhaar|risk)s?\b(\s+mean)?\s*\??$"),
               re.compile(r"\bmatlab\b"), re.compile(r"کا مطلب"), re.compile(r"\bmeaning of\b"))
+
+YES = re.compile(r"^(yes|yeah|yep|sure|ok(ay)?|right|correct|exactly|haan|han|ji|ji haan|jee|bilkul|ہاں|جی|جی ہاں|بالکل)\b")
 
 OUT_OF_SCOPE = (r"stock market", r"\bpsx\b", r"crypto", r"bitcoin", r"\bgold\b", r"interest rate", r"exchange rate",
                 r"weather", r"\btax\b", r"\bloan\b", r"\bdollar rate\b", r"\bcricket\b")
@@ -375,7 +387,12 @@ def understand(text: str, today: date, context: dict | None = None) -> Understan
     prev_intent = prev_intent if prev_intent in TOOL_INTENTS else None
     prev_params = _clean_params((context or {}).get("params"))
     pending = bool((context or {}).get("pending"))
-    new = {k: v for k, v in u.params.items() if k in PARAM_KEYS and v is not None}
+    if u.score < CONFIDENT and is_out_of_scope(text):
+        return u  # "what about the PSX index today?" is not a follow-up
+    new = relevant_params(prev_intent, u.params) if prev_intent else {}
+
+    if prev_intent and pending and u.score < CONFIDENT and YES.match(text.strip().lower()):
+        return Understanding(prev_intent, CONFIDENT, {**prev_params, **new}, u.candidates, u.concepts, followup=True)
 
     if prev_intent and "urdu_request" in u.concepts and u.score < CONFIDENT:
         return Understanding(prev_intent, CONFIDENT, {**prev_params}, u.candidates, u.concepts, followup=True,

@@ -354,4 +354,17 @@ export interface CopilotAnswer {
   llm_available: boolean;
   llm_consent: boolean;
   disclaimer: string;
+  /** Clickable follow-up questions (clarifications, unsupported questions). */
+  suggestions?: string[];
+  needs_clarification?: boolean;
+  /** Echoed back with the next question so follow-ups ("what if it drops another 10%?") keep context. */
+  context?: CopilotContext | null;
+  followup?: boolean;
+  interpreted_by?: "rules" | "context" | "groq" | "gemini";
+}
+
+export interface CopilotContext {
+  intent: string | null;
+  params: { percent?: number; delay_days?: number; amount_paisa?: number; day?: number };
+  pending: boolean;
 }

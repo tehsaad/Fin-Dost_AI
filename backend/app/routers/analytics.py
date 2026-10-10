@@ -256,16 +256,38 @@ def financial_report_csv(business: Business = Depends(require_feature("reports")
 @router.post("/copilot/query")
 def copilot(body: CopilotIn, business: Business = Depends(require_feature("copilot")), db: Session = Depends(get_db)):
     snap, today = context(db, business)
-    result = copilot_svc.answer(snap, today, body.question, body.language or business.language, features(business))
+    language = body.language or business.language
+    prev = body.context.model_dump() if body.context else None
+    result = copilot_svc.answer(snap, today, body.question, language, features(business), context=prev)
     status = ai.status()
+    llm_ok = body.use_llm and business.ai_consent and status["tasks"]["explain"]["available"]
     result["llm_available"] = status["tasks"]["explain"]["available"]
     result["llm_consent"] = business.ai_consent
     result["ai_provider"] = None
-    if (body.use_llm and business.ai_consent and result["llm_available"]
-            and result["intent"] not in ("unknown", "out_of_scope")):
-        ai.consume_quota(db, business, "explain", today)
+    names = list(snap.customers.values()) + list(snap.suppliers.values()) + [business.name]
+    if llm_ok and result["intent"] in ("unknown", "clarify"):
+        # The rules could not place the question: let the model map it to one of our tools (it sees only the
+        # question with names masked, never records). The tool then computes the answer from the user's data.
+        try:
+            ai.consume_quota(db, business, "explain", today)
+            picked = ai_tasks.interpret(body.question, names, (prev or {}).get("intent"))
+        except ApiError:
+            picked = None
+        if picked:
+            intent, params, provider = picked
+            interpreted = copilot_svc.answer(snap, today, body.question, language, features(business),
+                                             override={"intent": intent, "params": params})
+            if interpreted["intent"] not in ("unknown", "error"):
+                result = {**interpreted, "llm_available": True, "llm_consent": True, "ai_provider": None,
+                          "interpreted_by": provider}
+    if llm_ok and result["intent"] not in ("unknown", "out_of_scope", "clarify", "error"):
+        try:
+            ai.consume_quota(db, business, "explain", today)
+        except ApiError:
+            if result.get("interpreted_by") not in ("groq", "gemini"):
+                raise
+            return result  # the interpretation used the last unit: keep the template wording
         lang = "roman_ur" if result["language"] == "en" and copilot_svc.is_roman_urdu(body.question) else result["language"]
-        names = list(snap.customers.values()) + list(snap.suppliers.values()) + [business.name]
         out = ai_tasks.explain(body.question, result["answer"], result["evidence"], lang, names)
         if out:
             text, provider = out

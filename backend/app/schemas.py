@@ -205,10 +205,26 @@ class MovementIn(_Base):
         return v
 
 
+class CopilotParams(_Base):
+    percent: int | None = Field(default=None, ge=1, le=100)
+    delay_days: int | None = Field(default=None, ge=1, le=180)
+    amount_paisa: int | None = Field(default=None, ge=1, le=MAX_PAISA)
+    day: int | None = Field(default=None, ge=1, le=365)
+
+
+class CopilotContext(_Base):
+    """The previous turn's interpretation, echoed back for follow-ups. It holds no financial data:
+    the answer is always recomputed from the authenticated user's own records."""
+    intent: str | None = Field(default=None, max_length=40)
+    params: CopilotParams = Field(default_factory=CopilotParams)
+    pending: bool = False
+
+
 class CopilotIn(_Base):
     question: str = Field(min_length=1, max_length=500)
     language: Literal["en", "ur"] | None = None
     use_llm: bool = True
+    context: CopilotContext | None = None
 
 
 class ImportConfirmIn(_Base):

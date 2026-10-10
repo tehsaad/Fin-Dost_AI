@@ -9,7 +9,7 @@ import { Button } from "@/components/shared/button";
 import { Notice, Spinner } from "@/components/shared/feedback";
 import { api, errorMessage } from "@/lib/api";
 import { cn } from "@/lib/format";
-import type { CopilotAnswer } from "@/lib/types";
+import type { CopilotAnswer, CopilotContext } from "@/lib/types";
 
 type Msg = { role: "user"; text: string } | { role: "bot"; answer: CopilotAnswer } | { role: "error"; text: string };
 
@@ -31,7 +31,9 @@ const SUGGESTIONS_PERSONAL = [
   "Explain my dashboard in simple Urdu",
 ];
 const LINK_LABEL: Record<string, string> = { "/dashboard": "Dashboard", "/simulator": "Simulator", "/alerts": "Alerts", "/forecast": "Forecast",
-  "/recovery": "Recovery", "/reports": "Reports", "/transactions?tab=receivables": "Receivables" };
+  "/recovery": "Recovery", "/reports": "Reports", "/transactions?tab=receivables": "Receivables",
+  "/transactions?tab=payables": "Payables", "/transactions": "Transactions", "/import": "Import" };
+const NOT_CALCULATED = new Set(["clarify", "unknown", "out_of_scope", "error"]);
 
 export default function CopilotPage() {
   const { business, has } = useApp();
@@ -39,6 +41,8 @@ export default function CopilotPage() {
   const [input, setInput] = useState("");
   const [lang, setLang] = useState<"en" | "ur">(business.language);
   const [busy, setBusy] = useState(false);
+  // The previous turn's interpretation, sent back so follow-ups keep context. It holds no financial data.
+  const [context, setContext] = useState<CopilotContext | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -52,8 +56,9 @@ export default function CopilotPage() {
     setInput("");
     setBusy(true);
     try {
-      const answer = await api<CopilotAnswer>("/copilot/query", { body: { question: q, language: lang } });
+      const answer = await api<CopilotAnswer>("/copilot/query", { body: { question: q, language: lang, context } });
       setMessages((m) => [...m, { role: "bot", answer }]);
+      if (answer.context) setContext(answer.context);
     } catch (e) {
       setMessages((m) => [...m, { role: "error", text: errorMessage(e) }]);
     } finally {
@@ -76,7 +81,7 @@ export default function CopilotPage() {
           <div className="flex h-full flex-col items-center justify-center text-center">
             <div className="mb-3 rounded-full bg-brand-50 p-3 dark:bg-brand-950/40"><Sparkles className="h-6 w-6 text-brand-600" /></div>
             <p className="text-sm font-semibold text-slate-900 dark:text-white">What would you like to know?</p>
-            <p className="mb-4 mt-1 max-w-md text-xs text-slate-500">Try one of these — answers include the evidence they were built from.</p>
+            <p className="mb-4 mt-1 max-w-md text-xs text-slate-500">Ask in your own words, or try one of these. Answers include the evidence they were built from, and you can ask follow-ups like “what if it drops another 10%?”.</p>
             <div className="flex max-w-2xl flex-wrap justify-center gap-2">
               {suggestions.map((s) => <button key={s} onClick={() => ask(s)} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-brand-950/30">{s}</button>)}
             </div>
@@ -102,11 +107,19 @@ export default function CopilotPage() {
                 </details>
               )}
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                {!NOT_CALCULATED.has(m.answer.intent) && <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
                   <ShieldCheck className="h-3 w-3" />{m.answer.used_llm ? `Worded by AI (${m.answer.ai_provider === "groq" ? "Groq" : "Gemini"}) · numbers verified against your data` : "Calculated from your data"}
-                </span>
+                </span>}
+                {m.answer.interpreted_by === "groq" || m.answer.interpreted_by === "gemini" ? (
+                  <span className="text-[10px] text-slate-500">Question understood by AI</span>
+                ) : null}
                 {m.answer.links.map((l) => <Link key={l} href={l} className="text-[11px] font-medium text-brand-700 hover:underline dark:text-brand-400">Open {LINK_LABEL[l] ?? l} →</Link>)}
               </div>
+              {m.answer.suggestions && m.answer.suggestions.length > 0 && i === messages.length - 1 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {m.answer.suggestions.map((s) => <button key={s} onClick={() => ask(s)} disabled={busy} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-brand-950/30">{s}</button>)}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -120,7 +133,7 @@ export default function CopilotPage() {
         <Button type="submit" disabled={busy || !input.trim()} aria-label="Send"><Send className="h-4 w-4" /></Button>
       </form>
       <p className="mt-2 text-[11px] text-slate-500">
-        {business.ai_consent ? "AI rephrasing is on: only computed figures (with names masked) may be sent to the language model, and any answer with an unverified number is discarded." : "AI rephrasing is off — answers come from FinDost's own templates. You can opt in from Settings."}
+        {business.ai_consent ? "AI is on: your question and computed figures (with customer and supplier names masked) may be sent to the language model to understand the question and word the answer. Numbers always come from FinDost's engine, and any answer with an unverified number is discarded." : "AI rephrasing is off — answers come from FinDost's own templates. You can opt in from Settings."}
       </p>
     </div>
   );

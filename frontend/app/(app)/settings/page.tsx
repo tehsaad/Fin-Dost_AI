@@ -82,7 +82,7 @@ export default function SettingsPage() {
         <div className="space-y-6">
           <Card title="Privacy & AI">
             <Toggle id="s-ai" checked={f.ai_consent} onChange={(v) => setF({ ...f, ai_consent: v })} label="Allow AI assistance"
-              description="Off by default. When on: (1) Copilot sends already-computed figures, with customer and supplier names masked, to Groq (or Gemini as backup) to word the answer — any answer with an unverified number is discarded; (2) receipt photos you choose to upload are read by Google Gemini and shown for your review before anything is saved. AI never calculates your balances." />
+              description="Off by default. When on: (1) Copilot sends already-computed figures, with customer and supplier names masked, to Groq (or Gemini as backup) to word the answer — any answer with an unverified number is discarded — and, when its own rules can't place a question, sends the question text (names masked) to pick the right calculation; (2) receipt photos you choose to upload are read by Google Gemini and shown for your review before anything is saved. AI never calculates your balances." />
             <AiStatusPanel />
           </Card>
           <Card title="Account">

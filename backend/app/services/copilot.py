@@ -17,7 +17,7 @@ from typing import Callable
 
 from ..money import fmt_pkr
 from .copilot_nlu import (CONFIDENT, PARAM_KEYS, TOOL_INTENTS, URDU_SCRIPT, Understanding, is_out_of_scope,
-                          language_of, parse_amount, parse_day, understand)
+                          language_of, parse_amount, parse_day, relevant_params, understand)
 from .forecast import run_forecast
 from .i18n import GLOSSARY, isolate_ltr, urdu_affordability, urdu_dashboard_summary, urdu_shortage_reason
 from .ledger import account_balances, payables_summary, period_summary, receivables_summary
@@ -89,6 +89,7 @@ class Ctx:
     lang: str
     params: dict
     party: tuple[str, str, str] | None
+    concepts: frozenset[str] = frozenset()
     _forecast: dict | None = None
 
     @property
@@ -157,12 +158,15 @@ def t_why_risk(c: Ctx) -> dict:
         recent, prior = trend["recent_4w_net_paisa"], trend["prior_4w_net_paisa"]
         ev.append(f"Everyday net cash flow: last 4 weeks {fmt_pkr(recent)}, 4 weeks before {fmt_pkr(prior)} ({trend['direction']})")
         if trend["direction"] == "declining":
-            en += (f" Your everyday cash flow is getting worse: net {fmt_pkr(recent)} in the last 4 weeks versus "
-                   f"{fmt_pkr(prior)} in the 4 weeks before.")
+            worse = (f"Your everyday cash flow is getting worse: net {fmt_pkr(recent)} in the last 4 weeks versus "
+                     f"{fmt_pkr(prior)} in the 4 weeks before.")
+            en = f"{worse} {en}" if "worse" in c.concepts else f"{en} {worse}"
             ur += f" پچھلے 4 ہفتوں میں روزمرہ کا خالص بہاؤ {fmt_pkr(recent)} رہا، اس سے پہلے {fmt_pkr(prior)} تھا، یعنی کمی آئی ہے۔"
         else:
-            en += (f" Everyday net cash flow is {trend['direction']}: {fmt_pkr(recent)} in the last 4 weeks versus "
-                   f"{fmt_pkr(prior)} before.")
+            steady = (f"Everyday net cash flow is {trend['direction']}: {fmt_pkr(recent)} in the last 4 weeks versus "
+                      f"{fmt_pkr(prior)} before.")
+            en = (f"Your everyday cash flow is not getting worse - it is {trend['direction']} ({fmt_pkr(recent)} in the last "
+                  f"4 weeks versus {fmt_pkr(prior)} before). " + en) if "worse" in c.concepts else f"{en} {steady}"
     rs = receivables_summary(c.snap, c.today)
     if rs["overdue_paisa"]:
         ev.append(f"Overdue receivables {fmt_pkr(rs['overdue_paisa'])}")
@@ -362,8 +366,14 @@ def t_expense_compare(c: Ctx) -> dict:
           + (f", {direction} {fmt_pkr(abs(change))} ({abs(pct):.0f}%)." if change else ", unchanged."))
     ur = f"پچھلے 30 دن کے اخراجات {fmt_pkr(recent.expenses)} رہے جبکہ اس سے پہلے کے 30 دن میں {fmt_pkr(prior.expenses)} تھے"
     ur += (f"، یعنی {fmt_pkr(abs(change))} {'زیادہ' if change > 0 else 'کم'}۔" if change else "۔")
+    asked_up = "increase" in c.concepts and "decline" not in c.concepts
+    asked_down = "decline" in c.concepts and "increase" not in c.concepts
+    if (asked_up and change <= 0) or (asked_down and change >= 0):
+        en = f"Overall your expenses did not {'rise' if asked_up else 'fall'}. " + en
+        ur = ("مجموعی طور پر آپ کے اخراجات بڑھے نہیں بلکہ کم ہوئے ہیں۔ " if asked_up
+              else "مجموعی طور پر آپ کے اخراجات کم نہیں ہوئے بلکہ بڑھے ہیں۔ ") + ur
     if ups:
-        en += " The biggest increases: " + "; ".join(f"{cat} +{fmt_pkr(d)}" for cat, d in ups) + "."
+        en += (" Some categories did rise: " if asked_up and change <= 0 else " The biggest increases: ") + "; ".join(f"{cat} +{fmt_pkr(d)}" for cat, d in ups) + "."
         ur += " سب سے زیادہ اضافہ: " + "، ".join(f"{cat} ({fmt_pkr(d)})" for cat, d in ups) + "۔"
     if downs:
         en += " Lower: " + "; ".join(f"{cat} -{fmt_pkr(-d)}" for cat, d in downs) + "."
@@ -598,7 +608,7 @@ def answer(snap: Snapshot, today: date, question: str, language: str = "en",
                       "پہلے لین دین درج کریں یا CSV امپورٹ کریں۔",
                       [], {"missing": ["transactions", "receivables", "payables"]}, links=["/transactions", "/import"])
 
-    c = Ctx(snap, today, question, low, lang, dict(u.params), party)
+    c = Ctx(snap, today, question, low, lang, dict(u.params), party, u.concepts)
     try:
         result = TOOLS[intent](c)
     except Exception as exc:  # never leak internals or data; log type and intent only
@@ -609,7 +619,7 @@ def answer(snap: Snapshot, today: date, question: str, language: str = "en",
     if result is None:  # glossary term not found
         return _unknown(lang, u)
     if not result.get("needs_clarification"):
-        params = {k: v for k, v in u.params.items() if k in PARAM_KEYS and v is not None}
+        params = relevant_params(intent, u.params)
         if intent in ("sales_decline", "scenario", "delayed_collection"):
             params.update({k: result["data"][k] for k in ("percent", "delay_days") if result["data"].get(k)})
         result["context"] = {"intent": intent if intent != "party" else None, "params": params, "pending": False}
@@ -656,7 +666,7 @@ def _clarify(lang: str, u: Understanding) -> dict:
         en = f"Did you mean: '{EXAMPLES.get(target, EXAMPLES['explain_dashboard'])}'? Reply 'yes', or ask it another way."
         ur = "کیا آپ کا مطلب یہ تھا؟ 'ہاں' لکھیں یا سوال دوسرے الفاظ میں پوچھیں۔"
         sugg = [EXAMPLES[i] for i, _ in u.candidates if i in EXAMPLES][:3]
-    params = {k: v for k, v in u.params.items() if k in PARAM_KEYS and v is not None}
+    params = relevant_params(target, u.params)
     return _clarification(lang, target if target in TOOL_INTENTS else None, params, en, ur, sugg)
 
 
