@@ -54,3 +54,9 @@ DELETE FROM supabase_migrations.schema_migrations WHERE version = '2026101300000
 | Frontend | deployment findost-au9u6ejny-teh-saad.vercel.app |
 
 To undo, use the promote commands above.
+
+## Accuracy pass (2026-10-10, commit a39f3b5)
+
+Backend findost-990gmmfhr-teh-saad.vercel.app, frontend findost-114czdxxv-teh-saad.vercel.app. No database change.
+To return to the enterprise release without this pass, promote findost-d5f54cn4k (backend) and findost-au9u6ejny
+(frontend); to return to before the enterprise upgrade, use the commands at the top.
