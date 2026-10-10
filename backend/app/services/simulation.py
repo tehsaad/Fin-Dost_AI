@@ -7,7 +7,7 @@ placeholder: each number comes from re-running the projection.
 Adjustment types
 ----------------
 Shocks:   sales_decline, delayed_payment, supplier_price_increase, unexpected_expense,
-          utility_increase, business_interruption, flood_disruption, customer_loss
+          utility_increase, rent_increase, business_interruption, flood_disruption, customer_loss
 What-if:  move_receivable, move_payable, sales_change, opex_change, purchase_change,
           emergency_expense, revenue_recovery
 Recovery: collect_receivables, request_partial_payment, defer_payables, reduce_discretionary,
@@ -21,12 +21,12 @@ from typing import Any
 import numpy as np
 
 from ..money import fmt_pkr
-from .categories import is_utility
+from .categories import is_rent, is_utility
 from .forecast import Components, Event, build_components, project
 from .snapshot import Snapshot
 
 SHOCK_TYPES = {"sales_decline", "delayed_payment", "supplier_price_increase", "unexpected_expense",
-               "utility_increase", "business_interruption", "flood_disruption", "customer_loss"}
+               "utility_increase", "rent_increase", "business_interruption", "flood_disruption", "customer_loss"}
 WHAT_IF_TYPES = {"move_receivable", "move_payable", "sales_change", "opex_change", "purchase_change",
                  "emergency_expense", "revenue_recovery"}
 ACTION_TYPES = {"collect_receivables", "request_partial_payment", "defer_payables", "reduce_discretionary",
@@ -162,6 +162,20 @@ def apply_adjustment(comp: Components, snap: Snapshot, adj: dict[str, Any]) -> l
         comp.var_out["utilities"][1:] *= factor
         _scale_events(comp, lambda e: e.amount < 0 and is_utility(e.category), factor)
         notes.append(f"Utility bills x{factor:.2f}")
+
+    elif kind == "rent_increase":
+        pct = _num(adj, "percent", 10, 0, 300)
+        start = int(_num(adj, "start_day", 1, 1, 365))
+        factor = 1 + pct / 100
+        rent_events = [e for e in comp.events if e.amount < 0 and e.day >= start and is_rent(e.category)]
+        before = sum(e.amount for e in rent_events)
+        _scale_events(comp, lambda e: e.amount < 0 and is_rent(e.category), factor, start)
+        extra = sum(e.amount for e in rent_events) - before
+        if rent_events:
+            notes.append(f"Rent x{factor:.2f} from day {start}: {len(rent_events)} payment(s), {fmt_pkr(-extra)} more")
+        else:
+            notes.append("No rent payment falls inside the forecast window, so this shock changes nothing. "
+                         "Record rent as a bill or let FinDost detect it from monthly history.")
 
     elif kind in ("unexpected_expense", "emergency_expense", "cash_injection"):
         amount = int(_num(adj, "amount_paisa", 0, 1, 10**13))
@@ -394,6 +408,8 @@ SHOCK_PRESETS = [
      "adjustments": [{"type": "supplier_price_increase", "percent": 15, "start_day": 1}]},
     {"id": "electricity_spike", "label": "Electricity bill up 40% (summer)", "icon": "zap",
      "adjustments": [{"type": "utility_increase", "percent": 40}]},
+    {"id": "rent_hike", "label": "Shop rent up 10%", "icon": "home",
+     "adjustments": [{"type": "rent_increase", "percent": 10}]},
     {"id": "emergency", "label": "Emergency expense Rs. 50,000 next week", "icon": "alert-triangle",
      "adjustments": [{"type": "unexpected_expense", "amount_paisa": 5_000_000, "day": 7, "label": "Emergency expense"}]},
     {"id": "closure_week", "label": "Shop closed for 7 days", "icon": "store",

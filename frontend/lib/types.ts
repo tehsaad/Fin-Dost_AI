@@ -57,6 +57,10 @@ export interface ForecastSummary {
   total_outflow_paisa: number;
   shortage_risk: "high" | "medium" | "watch" | "low";
   flows_by_source_paisa: Record<string, number>;
+  band_available: boolean;
+  runway_days: number | null;
+  avg_daily_net_paisa: number;
+  runway_extrapolated_days: number | null;
 }
 
 export interface ForecastEvent {
@@ -89,6 +93,7 @@ export interface ForecastModel {
   mae_paisa?: number;
   wape_pct?: number | null;
   method?: string;
+  band?: { method: "backtest_rmse" | "history_std" | "none"; sigma_daily_paisa: number; note: string };
 }
 
 export interface Forecast {

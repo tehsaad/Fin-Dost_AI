@@ -18,6 +18,7 @@ reduced or dropped and the forecast is marked low-confidence.
 """
 from __future__ import annotations
 
+import calendar
 import copy
 import hashlib
 import json
@@ -196,7 +197,7 @@ def _next_monthly_dates(day_of_month: int, last: date, today: date, end: date) -
         m += 1
         if m > 12:
             y, m = y + 1, 1
-        d = date(y, m, min(day_of_month, 28))
+        d = date(y, m, min(day_of_month, calendar.monthrange(y, m)[1]))  # 31st -> 30th / 28th / 29th
         if today < d <= end:
             out.append(d)
     return out
@@ -337,7 +338,10 @@ def build_components(snap: Snapshot, today: date, horizon: int = 30) -> Componen
     var_in = np.zeros(horizon + 1)
     var_out = {g: np.zeros(horizon + 1) for g in GROUPS}
     sigma = 0.0
-    model_info: dict = {"name": "none", "label": "No everyday-flow model", "history_days": history_days}
+    model_info: dict = {"name": "none", "label": "No everyday-flow model", "history_days": history_days,
+                        "band": {"method": "none", "sigma_daily_paisa": 0,
+                                 "note": "Not enough history to estimate uncertainty, so no band is shown. "
+                                         "The line only reflects recorded bills, invoices and detected patterns."}}
 
     if lookback >= 7:
         hist_dates = [today - timedelta(days=lookback - i) for i in range(lookback)]
@@ -376,13 +380,19 @@ def build_components(snap: Snapshot, today: date, horizon: int = 30) -> Componen
                 "mae_paisa": int(results[chosen]["mae"]),
                 "wape_pct": round(results[chosen]["mae"] * 7 / weekly_income * 100, 1) if weekly_income else None,
                 "method": "rolling-origin back-test: 4 origins x 7-day horizon, trained only on data before each origin",
+                "band": {"method": "backtest_rmse", "sigma_daily_paisa": int(sigma),
+                         "note": "80% band = 1.28 x back-test daily error (RMSE) x sqrt(days ahead). It covers "
+                                 "everyday sales/expense variation only, not late customers or unrecorded bills."},
             }
             fit = MODELS[chosen][1]
         else:
             fit = _fit_flat
             sigma = float((h_in - h_out_total).std()) if lookback > 1 else 0.0
             model_info = {"name": "flat_28d_mean", "label": "Flat average (short history, no back-test)",
-                          "history_days": history_days}
+                          "history_days": history_days,
+                          "band": {"method": "history_std", "sigma_daily_paisa": int(sigma),
+                                   "note": f"Rough band from the spread of {lookback} days of net flows; "
+                                           "not back-tested, so treat it as indicative only."}}
             warnings.append(f"Only {history_days} days of history: everyday flows use a simple average and are not back-tested.")
 
         future_dates = [today + timedelta(days=d) for d in range(1, horizon + 1)]
@@ -529,11 +539,25 @@ def project(comp: Components) -> dict:
             "total_inflow_paisa": int(round(inflow[1:].sum())),
             "total_outflow_paisa": int(round(outflow[1:].sum())),
             "shortage_risk": risk,
+            "band_available": comp.model.get("band", {}).get("method", "none") != "none",
+            # Runway = days until the projected balance first drops below zero (None: not within the horizon).
+            "runway_days": shortage_day,
+            "avg_daily_net_paisa": int(round((balance[H] - balance[0]) / H)),
+            "runway_extrapolated_days": _extrapolated_runway(balance, H) if shortage_day is None else None,
             "flows_by_source_paisa": dict(by_kind),
         },
         "contributors": [_event_dict(ev, comp) for ev in contributors],
         "events": [_event_dict(ev, comp) for ev in sorted(comp.events, key=lambda e: (e.day, e.amount)) if 1 <= ev.day <= H],
     }
+
+
+def _extrapolated_runway(balance: np.ndarray, horizon: int) -> int | None:
+    """If cash is still positive at the horizon but falling on average, days until zero at that average rate.
+    Clearly an extrapolation: only shown as such."""
+    avg = (balance[horizon] - balance[0]) / horizon
+    if avg >= 0 or balance[horizon] <= 0:
+        return None
+    return horizon + int(balance[horizon] // -avg)
 
 
 def _event_dict(ev: Event, comp: Components) -> dict:

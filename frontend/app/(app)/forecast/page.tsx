@@ -52,7 +52,8 @@ export default function ForecastPage() {
           ["In 14 days", formatPKR(s.balance_d14_paisa), "forecast"],
           ["Lowest point", `${formatPKR(s.min_balance_paisa)}`, "forecast", formatDate(s.min_balance_date, "long")],
           ["Shortage date", s.shortage_date ? formatDate(s.shortage_date, "long") : "None projected", "forecast", s.days_to_shortage !== null ? `in ${s.days_to_shortage} days` : undefined],
-          [`End of ${data.horizon_days} days`, formatPKR(s.balance_end_paisa), "forecast"],
+          [`End of ${data.horizon_days} days`, formatPKR(s.balance_end_paisa), "forecast",
+            s.runway_days !== null ? `runway ${s.runway_days} days` : s.runway_extrapolated_days !== null ? `≈${s.runway_extrapolated_days} days at today's average burn (extrapolated)` : `avg ${formatPKR(s.avg_daily_net_paisa, { sign: true })}/day`],
         ].map(([label, value, type, sub]) => (
           <div key={label as string} className="rounded-lg border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900">
             <div className="flex items-center justify-between"><p className="text-[11px] text-slate-500">{label}</p><ValueTag type={type as "actual" | "forecast"} /></div>
@@ -62,10 +63,11 @@ export default function ForecastPage() {
         ))}
       </div>
 
-      <Card title="Projected daily balance" subtitle={`Risk level: ${s.shortage_risk.toUpperCase()} · shaded band = likely range from back-test errors (≈80%) · red line = Rs. 0${s.reserve_paisa ? " · amber = your reserve" : ""}`}
+      <Card title="Projected daily balance" subtitle={`Risk level: ${s.shortage_risk.toUpperCase()} · ${s.band_available ? (m.band?.method === "history_std" ? "shaded band = rough range (not back-tested)" : "shaded band = likely range from back-test errors (≈80%)") : "no uncertainty band (not enough history)"} · red line = Rs. 0${s.reserve_paisa ? " · amber = your reserve" : ""}`}
         action={<LevelBadge level={s.shortage_risk} />}>
         <BalanceChart history={data.history} points={data.points} reserve={s.reserve_paisa} shortageDate={s.shortage_date} height={340} />
-        <p className="mt-2 text-[11px] text-slate-500">{data.disclaimer}</p>
+        {m.band && <p className="mt-2 text-[11px] text-slate-500">{m.band.note}</p>}
+        <p className="mt-1 text-[11px] text-slate-500">{data.disclaimer}</p>
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">

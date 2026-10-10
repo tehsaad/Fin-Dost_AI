@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CloudRain, Clock, LifeBuoy, Package, Play, Save, Store, Trash2, TrendingDown, X, Zap } from "lucide-react";
+import { AlertTriangle, CloudRain, Clock, Home, LifeBuoy, Package, Play, Save, Store, Trash2, TrendingDown, X, Zap } from "lucide-react";
 import { PageHeader } from "@/components/app/shell";
 import { useApp } from "@/components/app/app-provider";
 import { Card } from "@/components/shared/card";
@@ -24,7 +24,7 @@ interface Presets {
   payables: Payable[];
   customers: { id: string; name: string }[];
 }
-const ICONS: Record<string, React.ElementType> = { "trending-down": TrendingDown, clock: Clock, package: Package, zap: Zap, "alert-triangle": AlertTriangle, store: Store, "cloud-rain": CloudRain };
+const ICONS: Record<string, React.ElementType> = { "trending-down": TrendingDown, clock: Clock, package: Package, zap: Zap, "alert-triangle": AlertTriangle, store: Store, "cloud-rain": CloudRain, home: Home };
 
 function useSimulation(adjustments: Adjustment[]) {
   const [result, setResult] = useState<SimResult | null>(null);

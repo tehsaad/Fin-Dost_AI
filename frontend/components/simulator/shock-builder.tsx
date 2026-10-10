@@ -13,6 +13,7 @@ const SHOCKS = [
   { type: "supplier_price_increase", label: "Supplier price increase" },
   { type: "unexpected_expense", label: "Unexpected expense" },
   { type: "utility_increase", label: "Electricity / utility bill increase" },
+  { type: "rent_increase", label: "Rent increase" },
   { type: "business_interruption", label: "Temporary business interruption" },
   { type: "flood_disruption", label: "Flood or disruption" },
   { type: "customer_loss", label: "Temporary loss of a major customer" },
@@ -26,6 +27,7 @@ export function describeAdjustment(a: Adjustment, customers: { id: string; name:
     case "supplier_price_increase": return `Supplier prices +${n("percent")}% from day ${n("start_day") ?? 1}`;
     case "unexpected_expense": return `${a.label ?? "Unexpected expense"} Rs. ${(n("amount_paisa") / 100).toLocaleString()} on day ${n("day")}`;
     case "utility_increase": return `Utility bills +${n("percent")}%`;
+    case "rent_increase": return `Rent +${n("percent")}% from day ${n("start_day") ?? 1}`;
     case "business_interruption": return `Closed ${n("duration_days")} days from day ${n("start_day")} (sales −${n("revenue_loss_percent")}%)`;
     case "flood_disruption": return `Flood: ${n("duration_days")} days, sales −${n("revenue_loss_percent")}%, repairs Rs. ${(n("repair_cost_paisa") / 100).toLocaleString()}`;
     case "customer_loss": return `${customers.find((c) => c.id === a.customer_id)?.name ?? "Customer"} pauses for ${n("duration_days")} days`;
@@ -52,6 +54,7 @@ export function ShockBuilder({ onAdd, receivables, customers, hasReceivables }: 
       case "supplier_price_increase": return { type, percent: num("percent"), start_day: num("start_day") };
       case "unexpected_expense": { const a = rupeesToPaisa(p.amount); return a ? { type, amount_paisa: a, day: num("day"), label: "Unexpected expense" } : null; }
       case "utility_increase": return { type, percent: num("percent") };
+      case "rent_increase": return { type, percent: num("percent"), start_day: num("start_day") };
       case "business_interruption": return { type, start_day: num("start_day"), duration_days: num("duration_days"), revenue_loss_percent: num("revenue_loss_percent") };
       case "flood_disruption": return { type, start_day: num("start_day"), duration_days: num("duration_days"), revenue_loss_percent: num("revenue_loss_percent"), repair_cost_paisa: rupeesToPaisa(p.repair_cost) ?? 0, receivable_delay_days: num("receivable_delay_days") };
       case "customer_loss": return customer ? { type, customer_id: customer, duration_days: num("duration_days") } : null;
@@ -65,6 +68,7 @@ export function ShockBuilder({ onAdd, receivables, customers, hasReceivables }: 
     supplier_price_increase: ["percent", "start_day"],
     unexpected_expense: ["amount", "day"],
     utility_increase: ["percent"],
+    rent_increase: ["percent", "start_day"],
     business_interruption: ["start_day", "duration_days", "revenue_loss_percent"],
     flood_disruption: ["start_day", "duration_days", "revenue_loss_percent", "repair_cost", "receivable_delay_days"],
     customer_loss: ["duration_days"],

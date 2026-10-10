@@ -69,6 +69,10 @@ def is_utility(category: str) -> bool:
     return expense_group(category) == "utilities"
 
 
+def is_rent(category: str | None) -> bool:
+    return bool(category) and re.search(r"\b(rent|kiraya|kiraaya)\b", category.lower()) is not None
+
+
 def _tokens(text: str) -> set[str]:
     return {t for t in re.findall(r"[a-z]{3,}", text.lower()) if t not in {"the", "and", "for", "from", "with"}}
 
