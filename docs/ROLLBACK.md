@@ -60,3 +60,8 @@ To undo, use the promote commands above.
 Backend findost-990gmmfhr-teh-saad.vercel.app, frontend findost-114czdxxv-teh-saad.vercel.app. No database change.
 To return to the enterprise release without this pass, promote findost-d5f54cn4k (backend) and findost-au9u6ejny
 (frontend); to return to before the enterprise upgrade, use the commands at the top.
+
+## Workspace selection (2026-10-10, main 24c14ac = PR #2)
+
+Backend findost-rnlvn5erl-teh-saad.vercel.app, frontend findost-jsrk5lqyj-teh-saad.vercel.app. No database change.
+To undo, promote the accuracy-pass deployments: backend findost-990gmmfhr, frontend findost-114czdxxv.
