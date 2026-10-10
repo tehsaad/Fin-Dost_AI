@@ -152,7 +152,7 @@ def test_unhandled_errors_return_json_with_request_id(monkeypatch):
     def boom():
         raise RuntimeError("secret detail Rs. 123")
 
-    monkeypatch.setattr(analytics, "run_benchmark", boom)
+    monkeypatch.setattr(analytics, "stored_benchmark", boom)
     r = TestClient(app, raise_server_exceptions=False).get(f"{API}/public/benchmark")
     assert r.status_code == 500
     body = r.json()

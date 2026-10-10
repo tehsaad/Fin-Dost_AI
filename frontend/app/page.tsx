@@ -122,13 +122,16 @@ function HeroVisual() {
   );
 }
 
-interface Bench { businesses_evaluated: number; accuracy_pct: number; recall_pct: number; naive_accuracy_pct: number; avg_warning_lead_days: number | null; note: string }
+interface Bench {
+  businesses_evaluated: number; horizon_days: number; accuracy_pct: number; recall_pct: number; false_positive_rate_pct: number;
+  naive_recall_pct: number; naive_false_positive_rate_pct: number; avg_warning_lead_days: number | null; note: string;
+}
 
 export default function Landing() {
-  const [bench, setBench] = useState<Bench | null>(null);
+  const [bench, setBench] = useState<Bench | null | "unavailable">(null);
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
-    fetch("/api/v1/public/benchmark").then((r) => (r.ok ? r.json() : null)).then(setBench).catch(() => setBench(null));
+    fetch("/api/v1/public/benchmark").then((r) => (r.ok ? r.json() : "unavailable")).then(setBench).catch(() => setBench("unavailable"));
     const onScroll = () => setScrolled(window.scrollY > 10);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -259,17 +262,24 @@ export default function Landing() {
             <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 animate-blob rounded-full bg-brand-500/30 blur-3xl" />
             <p className="text-sm font-semibold uppercase tracking-widest text-brand-400">Measured, not claimed</p>
             <h2 className="mt-2 max-w-2xl text-3xl font-semibold tracking-tight">We test the forecaster on businesses it has never seen</h2>
-            <div className="mt-10 grid grid-cols-2 gap-8 md:grid-cols-4">
-              {[
-                ["Test businesses", bench ? <Counter key="a" value={bench.businesses_evaluated} /> : "—"],
-                ["Shortages caught (recall)", bench ? <Counter key="b" value={bench.recall_pct} suffix="%" decimals={1} /> : "—"],
-                ["Accuracy vs naive rule", bench ? <span key="c"><Counter value={bench.accuracy_pct} suffix="%" decimals={1} /> <span className="text-base text-slate-400">vs {bench.naive_accuracy_pct}%</span></span> : "—"],
-                ["Average early warning", bench?.avg_warning_lead_days ? <Counter key="d" value={bench.avg_warning_lead_days} suffix=" days" decimals={1} /> : "—"],
-              ].map(([l, v], i) => (
-                <div key={i}><p className="text-3xl font-semibold md:text-4xl">{v}</p><p className="mt-1 text-sm text-slate-400">{l}</p></div>
-              ))}
-            </div>
-            <p className="mt-8 max-w-3xl text-xs text-slate-500">{bench?.note ?? "Benchmark runs on synthetic, held-out test businesses."} These figures describe the software&apos;s behaviour, not real-world social outcomes.</p>
+            {bench === "unavailable" ? (
+              <p className="mt-10 text-sm text-slate-400">Benchmark results could not be loaded right now. They are published in the app&apos;s SDG Impact page with full definitions.</p>
+            ) : (
+              <div className="mt-10 grid grid-cols-2 gap-8 md:grid-cols-4">
+                {[
+                  ["Synthetic test businesses", bench ? <Counter key="a" value={bench.businesses_evaluated} /> : "—"],
+                  [`Shortages caught within ${bench?.horizon_days ?? 14} days`, bench ? <Counter key="b" value={bench.recall_pct} suffix="%" decimals={1} /> : "—"],
+                  ["False alarms vs naive rule", bench ? <span key="c"><Counter value={bench.false_positive_rate_pct} suffix="%" decimals={1} /> <span className="text-base text-slate-400">vs {bench.naive_false_positive_rate_pct}%</span></span> : "—"],
+                  ["Average early warning", bench?.avg_warning_lead_days ? <Counter key="d" value={bench.avg_warning_lead_days} suffix=" days" decimals={1} /> : "—"],
+                ].map(([l, v], i) => (
+                  <div key={i}><p className="text-3xl font-semibold md:text-4xl">{v}</p><p className="mt-1 text-sm text-slate-400">{l}</p></div>
+                ))}
+              </div>
+            )}
+            <p className="mt-8 max-w-3xl text-xs text-slate-500">
+              {bench && bench !== "unavailable" && `The naive rule (cash minus recorded bills) catches ${bench.naive_recall_pct}% of shortages but warns ${bench.naive_false_positive_rate_pct}% of businesses that were fine; FinDost warns ${bench.false_positive_rate_pct}%. `}
+              Measured on synthetic, held-out test businesses generated from our own assumptions — these figures describe the software&apos;s behaviour, not real-world outcomes.
+            </p>
           </div>
         </Reveal>
       </section>

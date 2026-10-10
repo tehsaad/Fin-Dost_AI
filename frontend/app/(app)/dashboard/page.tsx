@@ -256,7 +256,7 @@ export default function DashboardPage() {
           {data.data_quality.issues.length ? (
             <ul className="mt-3 space-y-1.5">{data.data_quality.issues.map((i) => <li key={i}><Notice tone="warning">{i}</Notice></li>)}</ul>
           ) : <Notice tone="success" className="mt-3">No data-quality issues found.</Notice>}
-          {business.is_demo && <Notice className="mt-3">This workspace uses fictional demo data. Reset or clear it in Settings.</Notice>}
+          {business.is_demo && <Notice className="mt-3">This workspace uses synthetic, fictional demo data (no real customer records). Reset or clear it in Settings.</Notice>}
         </Card>
       </div>
 

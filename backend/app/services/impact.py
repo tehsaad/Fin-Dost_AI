@@ -13,10 +13,12 @@ not real-world social outcomes.
 """
 from __future__ import annotations
 
+import json
 import random
 from dataclasses import dataclass
 from datetime import date, timedelta
 from functools import lru_cache
+from pathlib import Path
 
 import numpy as np
 
@@ -26,6 +28,25 @@ from .snapshot import Pay, Rec, Snapshot, Tx
 
 HISTORY = 63
 HORIZON = 14
+BENCHMARK_VERSION = "benchmark-v2"
+STORED = Path(__file__).resolve().parent.parent / "data" / "benchmark.json"
+
+DEFINITIONS = {
+    "split": "Time-based: each synthetic business has 63 days of history the model may see, then a hidden "
+             "14-day future generated afterwards with fresh noise and customer lateness. Labels come only from that "
+             "hidden future, so no future information leaks into the forecast.",
+    "horizon_days": "14 days after the forecast date.",
+    "labelled_shortage": "The realised (hidden) balance drops below Rs. 0 on any day 1-14.",
+    "predicted_shortage": "The forecast's projected balance drops below Rs. 0 on any day 1-14.",
+    "recall": "Labelled shortages that were predicted / all labelled shortages.",
+    "precision": "Predicted shortages that really happened / all predicted shortages.",
+    "false_positive_rate": "No-shortage businesses wrongly warned / all no-shortage businesses.",
+    "lead_time": "For correctly warned businesses: days from the forecast date to the first realised negative day "
+                 "(how much notice the owner gets).",
+    "balance_error": "Absolute difference between forecast and realised balance on day 14 (rupees); the naive "
+                     "baseline forecast is today's balance minus recorded bills, ignoring sales and collections.",
+    "naive_rule": "Warn if today's balance minus recorded bills due within 14 days is below zero.",
+}
 
 SDG_TARGETS = [
     {"target": "1.4", "goal": "SDG 1 - No Poverty",
@@ -128,10 +149,14 @@ def _make_case(rng: random.Random, i: int, today: date) -> SyntheticCase:
     return SyntheticCase(snap=snap, realised=bal, label_shortage=bool(neg), label_day=neg[0] if neg else None)
 
 
-def _naive_shortage(case: SyntheticCase, today: date) -> bool:
-    """Baseline rule: today's balance minus recorded bills due in 14 days (ignores sales and collections)."""
+def _naive_day14(case: SyntheticCase, today: date) -> float:
+    """Baseline forecast: today's balance minus recorded bills due in 14 days (ignores sales and collections)."""
     due = sum(p.amount for p in case.snap.payables if p.due_on <= today + timedelta(days=HORIZON))
-    return case.realised[0] - due < 0
+    return float(case.realised[0] - due)
+
+
+def _naive_shortage(case: SyntheticCase, today: date) -> bool:
+    return _naive_day14(case, today) < 0
 
 
 @lru_cache(maxsize=4)
@@ -140,7 +165,7 @@ def run_benchmark(seed: int = 2026, n: int = 120, today_iso: str = "2026-01-15")
     rng = random.Random(seed)
     tp = fp = tn = fn = 0
     btp = bfp = btn = bfn = 0
-    lead_times, abs_err_14, wape_terms = [], [], []
+    lead_times, abs_err_14, naive_err_14 = [], [], []
     recovery_runs = 0
     gains = []
     for i in range(n):
@@ -167,9 +192,8 @@ def run_benchmark(seed: int = 2026, n: int = 120, today_iso: str = "2026-01-15")
             bfn += 1
         else:
             btn += 1
-        err = abs(res["points"][HORIZON]["balance_paisa"] - case.realised[HORIZON])
-        abs_err_14.append(err)
-        wape_terms.append(abs(case.realised[HORIZON] - case.realised[0]) + 1)
+        abs_err_14.append(abs(res["points"][HORIZON]["balance_paisa"] - case.realised[HORIZON]))
+        naive_err_14.append(abs(_naive_day14(case, today) - case.realised[HORIZON]))
         if pred and i % 3 == 0:  # evaluate recovery on a subset to keep the endpoint fast
             rec = recommend(case.snap, today, [], HORIZON)
             recovery_runs += len(rec["strategies"])
@@ -180,11 +204,16 @@ def run_benchmark(seed: int = 2026, n: int = 120, today_iso: str = "2026-01-15")
         precision = tp_ / (tp_ + fp_) if tp_ + fp_ else 0.0
         recall = tp_ / (tp_ + fn_) if tp_ + fn_ else 0.0
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        fpr = fp_ / (fp_ + tn_) if fp_ + tn_ else 0.0
         return {"accuracy": round((tp_ + tn_) / n * 100, 1), "precision": round(precision * 100, 1),
                 "recall": round(recall * 100, 1), "f1": round(f1 * 100, 1),
+                "false_positive_rate": round(fpr * 100, 1),
                 "confusion": {"tp": tp_, "fp": fp_, "tn": tn_, "fn": fn_}}
 
     return {
+        "version": BENCHMARK_VERSION,
+        "config": {"seed": seed, "n": n, "forecast_date": today_iso, "history_days": HISTORY, "horizon_days": HORIZON},
+        "definitions": DEFINITIONS,
         "businesses_evaluated": n,
         "labelled_shortages": tp + fn,
         "labelled_shortage_rate_pct": round((tp + fn) / n * 100, 1),
@@ -193,6 +222,9 @@ def run_benchmark(seed: int = 2026, n: int = 120, today_iso: str = "2026-01-15")
         "naive_baseline": metrics(btp, bfp, btn, bfn),
         "avg_warning_lead_days": round(float(np.mean(lead_times)), 1) if lead_times else None,
         "median_abs_error_day14_paisa": int(np.median(abs_err_14)),
+        "mean_abs_error_day14_paisa": int(np.mean(abs_err_14)),
+        "naive_median_abs_error_day14_paisa": int(np.median(naive_err_14)),
+        "naive_mean_abs_error_day14_paisa": int(np.mean(naive_err_14)),
         "recovery_scenarios_evaluated": recovery_runs,
         "avg_min_balance_gain_paisa": int(np.mean(gains)) if gains else 0,
         "method": ("Synthetic micro-businesses (fixed seed). The forecaster sees 9 weeks of history plus recorded bills and "
@@ -201,3 +233,14 @@ def run_benchmark(seed: int = 2026, n: int = 120, today_iso: str = "2026-01-15")
         "limitations": ("Synthetic data follows our own assumptions about small-shop cash flows, so these figures show how the "
                         "software behaves, not how it performs for real businesses. Real-world validation is still needed."),
     }
+
+
+def stored_benchmark() -> dict:
+    """Results written by scripts/run_benchmark.py (with metadata). Falls back to computing them."""
+    try:
+        data = json.loads(STORED.read_text())
+        if data.get("version") == BENCHMARK_VERSION:
+            return data
+    except (OSError, ValueError):
+        pass
+    return {**run_benchmark(), "generated_at": None, "status": "computed_at_runtime"}

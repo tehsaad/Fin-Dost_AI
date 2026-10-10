@@ -1,0 +1,63 @@
+{
+  "avg_min_balance_gain_paisa": 36943358,
+  "avg_warning_lead_days": 7.8,
+  "businesses_evaluated": 120,
+  "config": {
+    "forecast_date": "2026-01-15",
+    "history_days": 63,
+    "horizon_days": 14,
+    "n": 120,
+    "seed": 2026
+  },
+  "definitions": {
+    "balance_error": "Absolute difference between forecast and realised balance on day 14 (rupees); the naive baseline forecast is today's balance minus recorded bills, ignoring sales and collections.",
+    "false_positive_rate": "No-shortage businesses wrongly warned / all no-shortage businesses.",
+    "horizon_days": "14 days after the forecast date.",
+    "labelled_shortage": "The realised (hidden) balance drops below Rs. 0 on any day 1-14.",
+    "lead_time": "For correctly warned businesses: days from the forecast date to the first realised negative day (how much notice the owner gets).",
+    "naive_rule": "Warn if today's balance minus recorded bills due within 14 days is below zero.",
+    "precision": "Predicted shortages that really happened / all predicted shortages.",
+    "predicted_shortage": "The forecast's projected balance drops below Rs. 0 on any day 1-14.",
+    "recall": "Labelled shortages that were predicted / all labelled shortages.",
+    "split": "Time-based: each synthetic business has 63 days of history the model may see, then a hidden 14-day future generated afterwards with fresh noise and customer lateness. Labels come only from that hidden future, so no future information leaks into the forecast."
+  },
+  "generated_at": "2026-10-10T05:02:08+00:00",
+  "labelled_shortage_rate_pct": 46.7,
+  "labelled_shortages": 56,
+  "limitations": "Synthetic data follows our own assumptions about small-shop cash flows, so these figures show how the software behaves, not how it performs for real businesses. Real-world validation is still needed.",
+  "mean_abs_error_day14_paisa": 4426745,
+  "median_abs_error_day14_paisa": 2099776,
+  "method": "Synthetic micro-businesses (fixed seed). The forecaster sees 9 weeks of history plus recorded bills and invoices; labels come from a hidden 14-day future generated with fresh noise and customer lateness. The naive baseline subtracts recorded bills from today's cash and ignores sales and collections.",
+  "model": {
+    "accuracy": 94.2,
+    "confusion": {
+      "fn": 2,
+      "fp": 5,
+      "tn": 59,
+      "tp": 54
+    },
+    "f1": 93.9,
+    "false_positive_rate": 7.8,
+    "precision": 91.5,
+    "recall": 96.4
+  },
+  "naive_baseline": {
+    "accuracy": 83.3,
+    "confusion": {
+      "fn": 0,
+      "fp": 20,
+      "tn": 44,
+      "tp": 56
+    },
+    "f1": 84.8,
+    "false_positive_rate": 31.2,
+    "precision": 73.7,
+    "recall": 100.0
+  },
+  "naive_mean_abs_error_day14_paisa": 16485371,
+  "naive_median_abs_error_day14_paisa": 13547366,
+  "recovery_scenarios_evaluated": 54,
+  "shortages_identified": 54,
+  "status": "stored",
+  "version": "benchmark-v2"
+}

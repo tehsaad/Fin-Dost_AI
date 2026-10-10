@@ -23,7 +23,7 @@ from ..services import ai
 from ..services.ai import tasks as ai_tasks
 from ..services.llm import numbers_grounded
 from ..services.i18n import isolate_ltr
-from ..services.impact import SDG_TARGETS, run_benchmark
+from ..services.impact import SDG_TARGETS, stored_benchmark
 from ..services.insights import dashboard as build_dashboard
 from ..services.insights import data_quality, report_insights
 from ..services.ledger import account_balances, period_summary
@@ -302,14 +302,20 @@ def ai_test(business: Business = Depends(get_business), db: Session = Depends(ge
 @router.get("/public/benchmark", tags=["meta"])
 def public_benchmark():
     """Synthetic benchmark summary for the public landing page (no user data involved)."""
-    b = run_benchmark()
+    b = stored_benchmark()
     return {
+        "version": b["version"],
+        "generated_at": b.get("generated_at"),
         "businesses_evaluated": b["businesses_evaluated"],
+        "horizon_days": b["config"]["horizon_days"],
         "labelled_shortage_rate_pct": b["labelled_shortage_rate_pct"],
         "accuracy_pct": b["model"]["accuracy"],
         "recall_pct": b["model"]["recall"],
         "precision_pct": b["model"]["precision"],
+        "false_positive_rate_pct": b["model"]["false_positive_rate"],
         "naive_accuracy_pct": b["naive_baseline"]["accuracy"],
+        "naive_recall_pct": b["naive_baseline"]["recall"],
+        "naive_false_positive_rate_pct": b["naive_baseline"]["false_positive_rate"],
         "avg_warning_lead_days": b["avg_warning_lead_days"],
         "recovery_scenarios_evaluated": b["recovery_scenarios_evaluated"],
         "note": "Measured on synthetic, held-out test businesses - not real-world outcomes.",
@@ -320,7 +326,7 @@ def public_benchmark():
 def impact(business: Business = Depends(require_feature("impact")), db: Session = Depends(get_db)):
     snap, today = context(db, business)
     fc = forecast_and_store(db, business, snap, today, 30)
-    bench = run_benchmark()
+    bench = stored_benchmark()
     runs = db.scalars(select(ForecastRun).where(ForecastRun.business_id == business.id)
                       .order_by(ForecastRun.run_date)).all()
     first_warning = next((r for r in runs if r.shortage_date), None)

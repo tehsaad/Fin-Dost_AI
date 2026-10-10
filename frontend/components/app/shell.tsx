@@ -173,7 +173,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase", KIND_STYLE[business.kind])}>{business.kind}</span>
                 {business.is_demo && (
                   <span title="All records in this workspace are fictional demo data" className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-                    Demo data
+                    Synthetic demo data
                   </span>
                 )}
               </div>

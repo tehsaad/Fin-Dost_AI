@@ -8,12 +8,14 @@ import { ErrorState, Notice, PageSkeleton } from "@/components/shared/feedback";
 import { useApi } from "@/lib/hooks";
 import { formatDate, formatPKR } from "@/lib/format";
 
-interface Metrics { accuracy: number; precision: number; recall: number; f1: number; confusion: { tp: number; fp: number; tn: number; fn: number } }
+interface Metrics { accuracy: number; precision: number; recall: number; f1: number; false_positive_rate: number; confusion: { tp: number; fp: number; tn: number; fn: number } }
 interface Impact {
   measured: {
     benchmark: {
       businesses_evaluated: number; labelled_shortages: number; labelled_shortage_rate_pct: number; shortages_identified: number;
       model: Metrics; naive_baseline: Metrics; avg_warning_lead_days: number | null; median_abs_error_day14_paisa: number;
+      naive_median_abs_error_day14_paisa: number; definitions: Record<string, string>; version: string; generated_at: string | null;
+      config: { seed: number; n: number; history_days: number; horizon_days: number };
       recovery_scenarios_evaluated: number; avg_min_balance_gain_paisa: number; method: string; limitations: string;
     };
     your_business: {
@@ -35,7 +37,7 @@ export default function ImpactPage() {
   if (!data) return <PageSkeleton />;
   const b = data.measured.benchmark;
   const y = data.measured.your_business;
-  const chart = ["accuracy", "precision", "recall", "f1"].map((k) => ({ metric: k.toUpperCase(), FinDost: b.model[k as keyof Metrics] as number, "Naive rule": b.naive_baseline[k as keyof Metrics] as number }));
+  const chart = (["accuracy", "precision", "recall", "f1", "false_positive_rate"] as const).map((k) => ({ metric: k === "false_positive_rate" ? "FALSE ALARMS" : k.toUpperCase(), FinDost: b.model[k], "Naive rule": b.naive_baseline[k] }));
 
   return (
     <div className="space-y-6">
@@ -78,10 +80,18 @@ export default function ImpactPage() {
                 <div key={l as string} className={`rounded-md p-3 ${c}`}><p className="tabular text-2xl font-semibold">{v as number}</p><p>{l as string}</p></div>
               ))}
             </div>
-            <p className="mt-3 text-xs text-slate-600 dark:text-slate-300">Median balance error at day 14: <strong className="tabular">{formatPKR(b.median_abs_error_day14_paisa)}</strong>. Average improvement of the lowest balance from the best recovery plan: <strong className="tabular">{formatPKR(b.avg_min_balance_gain_paisa)}</strong>.</p>
+            <p className="mt-3 text-xs text-slate-600 dark:text-slate-300">Median balance error at day 14: <strong className="tabular">{formatPKR(b.median_abs_error_day14_paisa)}</strong> (naive baseline {formatPKR(b.naive_median_abs_error_day14_paisa)}). False alarms: <strong>{b.model.false_positive_rate}%</strong> of no-shortage businesses (naive rule {b.naive_baseline.false_positive_rate}%). Average improvement of the lowest balance from the best recovery plan: <strong className="tabular">{formatPKR(b.avg_min_balance_gain_paisa)}</strong>.</p>
           </Card>
         </div>
         <Notice tone="warning">{b.limitations}</Notice>
+        <details className="rounded-lg border border-slate-200 bg-white p-4 text-xs dark:border-slate-800 dark:bg-slate-900">
+          <summary className="cursor-pointer font-medium text-slate-700 dark:text-slate-200">How these numbers are defined ({b.version}{b.generated_at ? `, generated ${formatDate(b.generated_at.slice(0, 10), "long")}` : ""}, seed {b.config.seed})</summary>
+          <dl className="mt-3 grid gap-2 md:grid-cols-2">
+            {Object.entries(b.definitions).map(([k, v]) => (
+              <div key={k}><dt className="font-semibold capitalize text-slate-700 dark:text-slate-300">{k.replace(/_/g, " ")}</dt><dd className="text-slate-600 dark:text-slate-400">{v}</dd></div>
+            ))}
+          </dl>
+        </details>
 
         <Card title="Your business (measured from your own data)">
           <div className="grid gap-4 text-sm md:grid-cols-3">
