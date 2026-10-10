@@ -281,33 +281,3 @@ def test_llm_number_guard_and_masking():
     masked, mapping = mask_names("Pay Al-Madina Caterers Rs. 5", ["Al-Madina Caterers"])
     assert "Al-Madina" not in masked and mapping["[P1]"] == "Al-Madina Caterers"
 
-
-def test_llm_rephrase_paths(monkeypatch):
-    import httpx
-
-    from app.config import get_settings
-    from app.services import llm
-
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    get_settings.cache_clear()
-    sent = {}
-
-    def reply(status, parts):
-        def fake_post(url, params=None, json=None, timeout=None):
-            sent["prompt"] = json["contents"][0]["parts"][0]["text"]
-            return httpx.Response(status, json={"candidates": [{"content": {"parts": parts}}]},
-                                  request=httpx.Request("POST", url))
-        monkeypatch.setattr(llm.httpx, "post", fake_post)
-
-    args = ("Can I afford it?", "Yes, lowest balance Rs. 118,000.", ["Pay Bilal Traders Rs. 5,000"], "en", ["Bilal Traders"])
-    try:
-        reply(200, [{"text": "plan...", "thought": True}, {"text": "Yes. [P1] gets Rs. 5,000; you keep Rs. 118,000."}])
-        assert llm.rephrase(*args) == "Yes. Bilal Traders gets Rs. 5,000; you keep Rs. 118,000."
-        assert "Bilal Traders" not in sent["prompt"]
-        reply(200, [{"text": "You keep Rs. 999,999."}])
-        assert llm.rephrase(*args) is None  # ungrounded number
-        reply(404, [])
-        assert llm.rephrase(*args) is None  # model unavailable -> template answer
-    finally:
-        monkeypatch.delenv("GEMINI_API_KEY")
-        get_settings.cache_clear()

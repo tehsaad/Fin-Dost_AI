@@ -44,6 +44,15 @@ def detect_language(text: str, preferred: str) -> str:
     return preferred if preferred in ("en", "ur") else "en"
 
 
+ROMAN_URDU = re.compile(r"\b(kya|kitna|kitne|kitni|hai|hain|mein|mera|meri|mujhe|paise|kharch|khatra|kyun|bach|"
+                        r"wasool|karun|karoon|sakta|sakti|agle|hafte|batao|samjhao)\b", re.I)
+
+
+def is_roman_urdu(text: str) -> bool:
+    """Urdu written in Latin letters ("kitna cash bachega?"): at least two common Roman Urdu words."""
+    return not URDU_SCRIPT.search(text) and len(ROMAN_URDU.findall(text)) >= 2
+
+
 def detect_intent(text: str) -> str:
     low = text.lower()
     for intent, patterns in INTENTS:

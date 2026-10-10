@@ -56,4 +56,7 @@ def root():
 
 @app.get("/api/v1/health", tags=["meta"])
 def health():
-    return {"status": "ok", "environment": settings.environment, "llm_configured": bool(settings.gemini_api_key)}
+    # Booleans only: never expose keys, model quotas or anything user-specific on this public endpoint.
+    current = get_settings()
+    ai = {"groq": bool(current.groq_api_key), "gemini": bool(current.gemini_api_key)}
+    return {"status": "ok", "environment": current.environment, "llm_configured": any(ai.values()), "ai": ai}

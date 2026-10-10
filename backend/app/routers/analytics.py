@@ -19,7 +19,9 @@ from ..models import Business, FinancialScenario, ForecastRun, RiskAlert
 from ..money import fmt_pkr
 from ..schemas import CopilotIn
 from ..services import copilot as copilot_svc
-from ..services import llm
+from ..services import ai
+from ..services.ai import tasks as ai_tasks
+from ..services.llm import numbers_grounded
 from ..services.i18n import isolate_ltr
 from ..services.impact import SDG_TARGETS, run_benchmark
 from ..services.insights import dashboard as build_dashboard
@@ -255,15 +257,46 @@ def financial_report_csv(business: Business = Depends(require_feature("reports")
 def copilot(body: CopilotIn, business: Business = Depends(require_feature("copilot")), db: Session = Depends(get_db)):
     snap, today = context(db, business)
     result = copilot_svc.answer(snap, today, body.question, body.language or business.language, features(business))
-    result["llm_available"] = bool(get_settings().gemini_api_key)
+    status = ai.status()
+    result["llm_available"] = status["tasks"]["explain"]["available"]
     result["llm_consent"] = business.ai_consent
-    if body.use_llm and business.ai_consent and result["intent"] not in ("unknown", "out_of_scope"):
+    result["ai_provider"] = None
+    if (body.use_llm and business.ai_consent and result["llm_available"]
+            and result["intent"] not in ("unknown", "out_of_scope")):
+        ai.consume_quota(db, business, "explain", today)
+        lang = "roman_ur" if result["language"] == "en" and copilot_svc.is_roman_urdu(body.question) else result["language"]
         names = list(snap.customers.values()) + list(snap.suppliers.values()) + [business.name]
-        text = llm.rephrase(body.question, result["answer"], result["evidence"], result["language"], names)
-        if text:
-            result["answer"] = isolate_ltr(text.replace("\u2066", "").replace("\u2069", "")) if result["language"] == "ur" else text
+        out = ai_tasks.explain(body.question, result["answer"], result["evidence"], lang, names)
+        if out:
+            text, provider = out
+            result["answer"] = isolate_ltr(text.replace("\u2066", "").replace("\u2069", "")) if lang == "ur" else text
             result["used_llm"] = True
+            result["ai_provider"] = provider
     return result
+
+
+@router.get("/ai/status")
+def ai_status(business: Business = Depends(get_business)):
+    """Which AI providers are configured (booleans and model names only) and today's quota."""
+    return {**ai.status(), "consent": business.ai_consent}
+
+
+@router.post("/ai/test")
+def ai_test(business: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Live check of the explanation route with a fixed, fictional sentence (no user data is sent)."""
+    ai.consume_quota(db, business, "explain", get_today())
+    sample = "Cash today is Rs. 118,000. The lowest projected balance is Rs. -12,000 on 2026-10-19."
+    started = ai.status()
+    if not started["tasks"]["explain"]["available"]:
+        return {"ok": False, "code": "unavailable", "message": "No AI provider is configured on the server."}
+    try:
+        res = ai.run(ai.AIRequest(task="explain", system=ai_tasks.EXPLAIN_SYSTEM,
+                                  user=f"Answer in simple English.\nQUESTION: Summarise.\nEVIDENCE:\n{sample}",
+                                  schema=ai_tasks.ExplainOut, max_output_tokens=200))
+    except ai.AIError as exc:
+        return {"ok": False, "code": exc.code, "message": str(exc)}
+    return {"ok": True, "provider": res.provider, "model": res.model, "latency_ms": res.latency_ms,
+            "grounded": numbers_grounded(res.data.answer, sample)}
 
 
 @router.get("/public/benchmark", tags=["meta"])

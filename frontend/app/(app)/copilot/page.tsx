@@ -103,7 +103,7 @@ export default function CopilotPage() {
               )}
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
-                  <ShieldCheck className="h-3 w-3" />{m.answer.used_llm ? "AI-rephrased · numbers verified" : "Calculated from your data"}
+                  <ShieldCheck className="h-3 w-3" />{m.answer.used_llm ? `Worded by AI (${m.answer.ai_provider === "groq" ? "Groq" : "Gemini"}) · numbers verified against your data` : "Calculated from your data"}
                 </span>
                 {m.answer.links.map((l) => <Link key={l} href={l} className="text-[11px] font-medium text-brand-700 hover:underline dark:text-brand-400">Open {LINK_LABEL[l] ?? l} →</Link>)}
               </div>

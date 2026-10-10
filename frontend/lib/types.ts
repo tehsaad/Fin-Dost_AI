@@ -348,6 +348,7 @@ export interface CopilotAnswer {
   links: string[];
   grounded: boolean;
   used_llm: boolean;
+  ai_provider: "groq" | "gemini" | null;
   llm_available: boolean;
   llm_consent: boolean;
   disclaimer: string;

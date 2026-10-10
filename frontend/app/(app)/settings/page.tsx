@@ -10,6 +10,7 @@ import { Button } from "@/components/shared/button";
 import { Field, Input, Select, Toggle } from "@/components/shared/form";
 import { Notice, Spinner } from "@/components/shared/feedback";
 import { Modal } from "@/components/shared/modal";
+import { AiStatusPanel } from "@/components/app/ai-status";
 import { api, errorMessage } from "@/lib/api";
 import { signOut } from "@/lib/auth";
 import { rupeesToPaisa } from "@/lib/format";
@@ -79,8 +80,9 @@ export default function SettingsPage() {
         </Card>
         <div className="space-y-6">
           <Card title="Privacy & AI">
-            <Toggle id="s-ai" checked={f.ai_consent} onChange={(v) => setF({ ...f, ai_consent: v })} label="Allow AI rephrasing in Copilot"
-              description="Off by default. When on, only already-computed figures (customer and supplier names masked) are sent to the language model to reword answers. Any answer containing an unverified number is discarded." />
+            <Toggle id="s-ai" checked={f.ai_consent} onChange={(v) => setF({ ...f, ai_consent: v })} label="Allow AI assistance"
+              description="Off by default. When on: (1) Copilot sends already-computed figures, with customer and supplier names masked, to Groq (or Gemini as backup) to word the answer — any answer with an unverified number is discarded; (2) receipt photos you choose to upload are read by Google Gemini and shown for your review before anything is saved. AI never calculates your balances." />
+            <AiStatusPanel />
           </Card>
           <Card title="Account">
             <p className="text-xs text-slate-500">Signed in as <strong className="text-slate-700 dark:text-slate-300">{me.user.email ?? me.user.id}</strong></p>

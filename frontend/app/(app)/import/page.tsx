@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
-import { CheckCircle2, Download, FileSpreadsheet, Pencil, RefreshCw, UploadCloud, XCircle } from "lucide-react";
+import { Camera, CheckCircle2, Download, FileSpreadsheet, Pencil, RefreshCw, UploadCloud, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/app/shell";
 import { Card } from "@/components/shared/card";
 import { Button } from "@/components/shared/button";
 import { Select } from "@/components/shared/form";
 import { Notice, Spinner, Tabs } from "@/components/shared/feedback";
 import { RowEditor, type ImportRow, type ImportSummary } from "@/components/import/row-editor";
+import type { AiStatus } from "@/components/app/ai-status";
+import { useApi } from "@/lib/hooks";
 import { api, errorMessage } from "@/lib/api";
 import { cn, formatPKR, KIND_LABEL } from "@/lib/format";
 
@@ -31,6 +33,7 @@ interface Preview {
   day_first: boolean;
   rows: PreviewRow[];
   summary: ImportSummary;
+  extraction?: { provider: string; confidence: number; document_type: string; line_items: { description: string; amount_paisa: number | null }[] };
 }
 interface ConfirmResult { imported: number; skipped_duplicates: number; skipped_by_user: number; rejected: number; unmatched_payments: number; duplicates_included: number }
 
@@ -53,6 +56,30 @@ export default function ImportPage() {
   const [result, setResult] = useState<ConfirmResult | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const receiptRef = useRef<HTMLInputElement>(null);
+  const aiStatus = useApi<AiStatus>("/ai/status").data;
+
+  const uploadReceipt = async (f: File) => {
+    setError(null);
+    setResult(null);
+    if (f.size > 4 * 1024 * 1024) return setError("The photo is larger than 4 MB. Take a smaller photo.");
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.append("file", f);
+      const p = await api<Preview>("/import/receipt", { form });
+      setFile(null);
+      setPreview(p);
+      setMapping({});
+      setExcluded(new Set());
+      setForced(new Set());
+      setFilter("all");
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const upload = async (f: File, map?: Record<string, string>) => {
     setError(null);
@@ -141,6 +168,20 @@ export default function ImportPage() {
             </ul>
             <p className="mt-4 text-[11px] leading-relaxed text-slate-500">Dates like 05/06/2026 are read day-first (Pakistani style) unless the file shows otherwise; ISO dates (2026-06-05) are never swapped. Amounts like &quot;Rs. 1,25,000&quot; and &quot;(500)&quot; are understood.</p>
           </Card>
+          <Card title="Receipt or bill photo" subtitle="Optional · read by AI, reviewed by you" className="lg:col-span-3">
+            {!aiStatus ? <Spinner /> : !aiStatus.tasks.extract_receipt.available ? (
+              <p className="text-xs text-slate-500">Not available on this server (no Gemini key configured). CSV import above works without AI.</p>
+            ) : !aiStatus.consent ? (
+              <p className="text-xs text-slate-500">Turn on <Link href="/settings" className="font-medium text-brand-700 underline">AI assistance in Settings</Link> first: the photo is sent to Google Gemini to be read.</p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3">
+                <input ref={receiptRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadReceipt(f); e.target.value = ""; }} />
+                <Button variant="outline" onClick={() => receiptRef.current?.click()} disabled={busy}>{busy ? <Spinner /> : <Camera className="h-4 w-4" />} Upload receipt / bill</Button>
+                <p className="text-xs text-slate-500">JPG, PNG, WEBP or PDF, up to 4 MB. The amount and date are a <strong>proposal</strong>: check them, correct anything wrong, then import. Unclear photos are held back until you fix them.</p>
+              </div>
+            )}
+          </Card>
         </div>
       )}
 
@@ -160,7 +201,14 @@ export default function ImportPage() {
             ))}
           </div>
 
-          <Card title={`Detected format: ${preview.adapter_label}`} subtitle={`${preview.filename} · dates read ${preview.day_first ? "day-first (DD/MM)" : "month-first (MM/DD)"} · cash in ${formatPKR(preview.summary.cash_in_paisa)}, out ${formatPKR(preview.summary.cash_out_paisa)}`}
+          {preview.extraction && (
+            <Notice tone="warning">
+              Read by AI ({preview.extraction.provider}) with {Math.round(preview.extraction.confidence * 100)}% confidence as a {preview.extraction.document_type}.
+              {preview.extraction.line_items.length > 0 && ` Line items: ${preview.extraction.line_items.map((li) => `${li.description}${li.amount_paisa !== null ? ` ${formatPKR(li.amount_paisa, { decimals: true })}` : ""}`).join("; ")}.`}
+              {" "}Check the row below against the paper before importing — use the pencil to correct it.
+            </Notice>
+          )}
+          {!preview.extraction && <Card title={`Detected format: ${preview.adapter_label}`} subtitle={`${preview.filename} · dates read ${preview.day_first ? "day-first (DD/MM)" : "month-first (MM/DD)"} · cash in ${formatPKR(preview.summary.cash_in_paisa)}, out ${formatPKR(preview.summary.cash_out_paisa)}`}
             action={<Button size="sm" variant="outline" disabled={busy || !file} onClick={() => file && upload(file, mapping)}>{busy ? <Spinner /> : <RefreshCw className="h-4 w-4" />} Re-check with this mapping</Button>}>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
               {FIELDS.map((f) => (
@@ -173,7 +221,7 @@ export default function ImportPage() {
                 </label>
               ))}
             </div>
-          </Card>
+          </Card>}
 
           <Card title="Preview of normalised records" subtitle="Untick rows you don't want. Fix rejected rows with the pencil. Duplicates are skipped unless you tick “import anyway” (e.g. two genuine identical sales)."
             action={<Tabs tabs={[{ id: "all", label: "All", count: preview.rows.length }, { id: "accepted", label: "Ready", count: preview.summary.accepted }, { id: "rejected", label: "Rejected", count: preview.summary.rejected }, { id: "duplicate", label: "Duplicates", count: preview.summary.duplicates }]} value={filter} onChange={setFilter} />}>

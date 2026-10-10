@@ -15,7 +15,9 @@ from ..db import get_db
 from ..errors import ApiError
 from ..models import Business, ImportBatch, Payable, Receivable, Transaction
 from ..schemas import ImportConfirmIn, RowCorrectionIn
-from ..services import audit
+from ..services import ai, audit
+from ..services.ai import tasks as ai_tasks
+from ..services.categories import categorize
 from ..services.ingestion import (TEMPLATES, IngestionError, Settler, annotate_settlements, build_preview, correct_row,
                                   dedupe_key, read_csv, summarize)
 from .common import context, get_or_create_customer, get_or_create_supplier, owned
@@ -65,6 +67,60 @@ async def preview(file: UploadFile = File(...), mapping: str | None = Form(defau
     db.add(batch)
     db.commit()
     return {"batch_id": batch.id, "filename": name, **result}
+
+
+MAX_RECEIPT_BYTES = 4 * 1024 * 1024  # Vercel request bodies are capped at 4.5 MB
+_MAGIC = {"image/jpeg": (b"\xff\xd8\xff",), "image/png": (b"\x89PNG",), "application/pdf": (b"%PDF",), "image/webp": (b"RIFF",)}
+
+
+@router.post("/import/receipt")
+async def receipt(file: UploadFile = File(...), business: Business = Depends(require_feature("import")),
+                  db: Session = Depends(get_db)):
+    """Read a receipt/invoice photo or PDF with AI into a preview row. Nothing is saved to the ledger:
+    the user reviews (and can correct) the row, then confirms it like any CSV import."""
+    if not business.ai_consent:
+        raise ApiError(403, "ai_consent_required",
+                       "Turn on AI assistance in Settings first: the document is sent to Google Gemini to be read.")
+    if not ai.status()["tasks"]["extract_receipt"]["available"]:
+        raise ApiError(503, "ai_unavailable", "Receipt reading is not configured on this server. CSV import still works.")
+    mime = (file.content_type or "").lower()
+    if mime not in ai_tasks.ALLOWED_MIME:
+        raise ApiError(415, "unsupported_file", "Upload a JPG, PNG or WEBP photo, or a PDF")
+    content = await file.read(MAX_RECEIPT_BYTES + 1)
+    if len(content) > MAX_RECEIPT_BYTES:
+        raise ApiError(413, "file_too_large", "File is larger than 4 MB. Take a smaller photo.")
+    if not content.startswith(_MAGIC[mime]) or (mime == "image/webp" and content[8:12] != b"WEBP"):
+        raise ApiError(415, "unsupported_file", "The file content does not match its type")
+    snap, today = context(db, business)
+    ai.consume_quota(db, business, "extract_receipt", today)
+    try:
+        prop = ai_tasks.extract_receipt(content, mime, today)
+    except ai.AIError as exc:
+        status = 429 if exc.code == "rate_limited" else 502
+        raise ApiError(status, f"ai_{exc.code}", f"Could not read the document: {exc}. You can enter it manually.")
+    kind = "income" if prop["direction"] == "money_in" else "expense"
+    description = " ".join(x for x in [prop["merchant"], prop["document_type"]] if x)[:240]
+    history = [(t.description, t.category) for t in snap.txs if t.source != "demo"][-300:]
+    category, reason, _ = categorize(" ".join([description] + [li["description"] for li in prop["line_items"]]),
+                                     "in" if kind == "income" else "out", history)
+    row = {"row_number": 1, "raw": {}, "status": "rejected" if prop["problems"] else "accepted",
+           "reasons": list(prop["problems"]), "warnings": prop["warnings"], "date": prop["date"], "kind": kind,
+           "amount_paisa": prop["amount_paisa"], "account": "cash", "category": category,
+           "category_reason": f"auto: {reason}", "description": description, "party": None, "due_date": None,
+           "reference": None, "dedupe_key": None, "ai_extracted": True, "confidence": prop["confidence"]}
+    if row["status"] == "accepted":
+        key = dedupe_key(date.fromisoformat(row["date"]), row["amount_paisa"], kind, description)
+        row["dedupe_key"] = key
+        if key in {dedupe_key(t.occurred_on, t.amount, t.kind, t.description) for t in snap.txs}:
+            row["status"], row["reasons"] = "duplicate", ["already in your ledger"]
+    name = (file.filename or "receipt")[:200]
+    batch = ImportBatch(business_id=business.id, filename=name, adapter="receipt_ai", status="preview",
+                        rows=[row], summary=summarize([row]))
+    db.add(batch)
+    db.commit()
+    return {"batch_id": batch.id, "filename": name, "adapter": "receipt_ai",
+            "adapter_label": f"Receipt read by AI ({prop['provider']})", "mapping": {}, "headers": [], "day_first": True,
+            "rows": [row], "summary": batch.summary, "extraction": prop}
 
 
 @router.put("/import/batches/{batch_id}/rows/{row_number}")

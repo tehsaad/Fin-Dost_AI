@@ -1,6 +1,6 @@
 """Runtime configuration, read once from environment variables.
 
-Secrets (database password, JWT secrets, LLM key) only ever live in the backend
+Secrets (database password, JWT secrets, AI provider keys) only ever live in the backend
 environment; the frontend never sees them.
 """
 from __future__ import annotations
@@ -30,7 +30,10 @@ class Settings:
     cors_origins: tuple[str, ...]
     gemini_api_key: str | None
     gemini_model: str
+    groq_api_key: str | None
+    groq_model: str
     llm_timeout_seconds: float
+    ai_daily_limit: int
     today_override: str | None
     max_upload_bytes: int
     environment: str
@@ -49,8 +52,12 @@ def get_settings() -> Settings:
             if o.strip()
         ),
         gemini_api_key=os.getenv("GEMINI_API_KEY") or None,
-        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
-        llm_timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "8")),
+        # gemini-2.0-flash is shut down and 2.5 models are limited to existing users (Google docs, Oct 2026).
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+        groq_api_key=os.getenv("GROQ_API_KEY") or None,
+        groq_model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
+        llm_timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "12")),
+        ai_daily_limit=int(os.getenv("AI_DAILY_LIMIT", "60")),
         today_override=os.getenv("FINDOST_TODAY") or None,
         max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024))),
         environment=os.getenv("ENVIRONMENT", "development"),
