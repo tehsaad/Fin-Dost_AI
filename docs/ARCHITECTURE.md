@@ -53,3 +53,16 @@
 * "Try a private demo" signs the visitor in anonymously (captcha-protected) and seeds a private workspace with
   synthetic data. Limits: 3,000 transactions, 10 AI calls/day, no receipt reading. It is deleted after 7 days by
   a daily Vercel Cron unless the visitor adds an email (Settings → Keep this workspace).
+
+## Copilot pipeline (`routers/analytics._copilot_steps`, streamed by `POST /copilot/stream`)
+
+1. **Rules** (`copilot_nlu` + `copilot.py`): scored intents in English, Urdu and Roman Urdu, follow-ups from the
+   echoed context; greetings and thanks get a friendly reply (no AI).
+2. **Interpreter** (AI on): maps a question the rules can't place to one engine tool with range-checked inputs.
+3. **Agent** (`services/ai/agent.py`, AI on, still unplaced): plans up to 3 engine tools (incl. inventory and
+   alerts) or a short conversational reply without figures, then words the computed results. Any number not in the
+   tool results is rejected and the engine's own wording is shown. Names are masked; the last 8 messages are context.
+4. **Rewording** (AI on): the rule answer is reworded by Groq (Gemini fallback) with the same number guard.
+
+Every figure comes from the engine. AI off, unavailable, failing or over the daily limit → the rule answer, with
+`ai_fallback` saying why.

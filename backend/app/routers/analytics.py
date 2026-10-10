@@ -22,6 +22,7 @@ from ..money import fmt_pkr
 from ..schemas import CopilotIn
 from ..services import copilot as copilot_svc
 from ..services import ai
+from ..services.ai import agent
 from ..services.ai import tasks as ai_tasks
 from ..services.llm import numbers_grounded
 from ..services.i18n import isolate_ltr
@@ -279,6 +280,11 @@ def _copilot_steps(body: CopilotIn, business: Business, db: Session):
 
     yield "status", "calculating"
     result = copilot_svc.answer(snap, today, body.question, language, features(business), context=prev)
+    if result["intent"] in ("unknown", "clarify"):
+        # "hi", "salam", "thanks": answer in kind instead of "I couldn't match that" (no AI, no quota).
+        greeting = agent.small_talk(body.question, result["language"])
+        if greeting:
+            result = greeting
     if llm_ok and result["intent"] in ("unknown", "clarify"):
         # The rules could not place the question: let the model map it to one of our tools (it sees only the
         # user's questions with names masked, never records). The tool then computes the answer from the user's data.
@@ -293,9 +299,22 @@ def _copilot_steps(body: CopilotIn, business: Business, db: Session):
                                              override={"intent": intent, "params": params})
             if interpreted["intent"] not in ("unknown", "error"):
                 result = {**interpreted, "interpreted_by": provider}
-    result.update(llm_available=available, llm_consent=business.ai_consent, ai_provider=None)
+    if llm_ok and result["intent"] in ("unknown", "clarify"):
+        # Still unplaced (several tools needed, inventory/alerts, small talk or a clarification): let the agent
+        # plan with the engine's tools and word the result; any figure it adds is rejected.
+        try:
+            ai.consume_quota(db, business, "explain", today)
+        except ApiError:
+            llm_ok, fallback = False, "quota"
+        else:
+            history = [agent.Turn(t.role, t.text) for t in body.history]
+            planned = agent.answer(snap, today, body.question, history, features(business), names, business.kind)
+            if planned:
+                result = planned
+    ai_provider = result.get("ai_provider")
+    result.update(llm_available=available, llm_consent=business.ai_consent, ai_provider=ai_provider)
 
-    if llm_ok and result["intent"] not in AI_OFF:
+    if llm_ok and result["intent"] not in AI_OFF + ("greeting",) and not result.get("used_llm") and not result.get("agent"):
         yield "status", "writing"
         try:
             ai.consume_quota(db, business, "explain", today)
