@@ -14,7 +14,7 @@ from ..config import today as get_today
 from ..db import get_db
 from ..errors import ApiError
 from ..models import Business
-from ..schemas import BusinessUpdate, OnboardingIn
+from ..schemas import AccountSettingsIn, BusinessUpdate, OnboardingIn
 from ..services import audit
 from ..services.i18n import GLOSSARY
 from ..services.recovery import DEFAULT_WEIGHTS
@@ -95,6 +95,29 @@ def update_business(body: BusinessUpdate, business: Business = Depends(get_busin
         setattr(business, key, value)
     db.commit()
     return business_dict(business)
+
+
+def settings_dict(b: Business) -> dict:
+    return {"ai_assistance_enabled": bool(b.ai_consent), "language": b.language}
+
+
+@router.get("/account/settings")
+def get_account_settings(business: Business = Depends(get_business)):
+    """Per-user preferences, read from the signed-in owner's workspace row (the single source of truth)."""
+    return settings_dict(business)
+
+
+@router.put("/account/settings")
+def update_account_settings(body: AccountSettingsIn, business: Business = Depends(get_business),
+                            db: Session = Depends(get_db)):
+    """Saves immediately, so a toggle survives reloads and new sign-ins without pressing a separate Save."""
+    if body.ai_assistance_enabled is not None:
+        business.ai_consent = body.ai_assistance_enabled
+    if body.language is not None:
+        business.language = body.language
+    db.commit()
+    db.refresh(business)
+    return settings_dict(business)
 
 
 @router.post("/business/reset-demo")

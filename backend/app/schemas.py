@@ -220,11 +220,27 @@ class CopilotContext(_Base):
     pending: bool = False
 
 
+class CopilotTurn(_Base):
+    """One earlier chat message, sent so the model can read follow-ups in context. It is never used as a
+    source of figures: every answer is recomputed from the authenticated user's own records."""
+    role: Literal["user", "assistant"]
+    text: str = Field(min_length=1, max_length=1000)
+
+
+COPILOT_HISTORY_TURNS = 8
+
+
 class CopilotIn(_Base):
     question: str = Field(min_length=1, max_length=500)
     language: Literal["en", "ur"] | None = None
     use_llm: bool = True
     context: CopilotContext | None = None
+    history: list[CopilotTurn] = Field(default_factory=list, max_length=COPILOT_HISTORY_TURNS)
+
+
+class AccountSettingsIn(_Base):
+    ai_assistance_enabled: bool | None = None
+    language: Literal["en", "ur"] | None = None
 
 
 class ImportConfirmIn(_Base):

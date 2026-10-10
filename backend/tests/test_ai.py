@@ -124,10 +124,13 @@ def test_copilot_respects_consent_and_quota(client, monkeypatch, keys):
     r = client.post(f"{API}/copilot/query", headers=h, json=q).json()
     assert r["llm_available"] is True
     assert http.hosts() == ["groq"]
-    # second call uses the last quota unit, third is refused with a clear message
+    # second call uses the last quota unit; the third falls back to the rule-based answer instead of failing
     client.post(f"{API}/copilot/query", headers=h, json=q)
     over = client.post(f"{API}/copilot/query", headers=h, json=q)
-    assert over.status_code == 429 and over.json()["error"]["code"] == "ai_quota"
+    assert over.status_code == 200, over.text
+    body = over.json()
+    assert body["used_llm"] is False and body["ai_fallback"] == "quota" and "Rs." in body["answer"]
+    assert http.hosts() == ["groq", "groq"]
     status = client.get(f"{API}/ai/status", headers=h).json()
     assert status["providers"]["groq"] == {"configured": True, "model": "openai/gpt-oss-20b"} and status["consent"] is True
     assert "test-groq-key" not in json.dumps(status)

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import logging
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
@@ -33,6 +35,7 @@ from ..services.risk import compute_alerts
 from ..services.simulation import simulate
 from .common import context, csv_safe, features, forecast_and_store
 
+log = logging.getLogger("findost.copilot")
 router = APIRouter(tags=["analytics"])
 
 
@@ -253,48 +256,98 @@ def financial_report_csv(business: Business = Depends(require_feature("reports")
                              headers={"Content-Disposition": f'attachment; filename="findost-report-{get_today()}.csv"'})
 
 
-@router.post("/copilot/query")
-def copilot(body: CopilotIn, business: Business = Depends(require_feature("copilot")), db: Session = Depends(get_db)):
+COPILOT_STAGES = {"understanding": "Understanding…", "calculating": "Calculating…", "writing": "Writing…"}
+AI_OFF = ("unknown", "out_of_scope", "clarify", "error")
+
+
+def _copilot_steps(body: CopilotIn, business: Business, db: Session):
+    """The copilot pipeline as a sequence of ("status", stage) events ending in ("answer", result).
+
+    Figures always come from FinDost's engine on this workspace's own records; AI only picks the tool for a
+    question the rules can't place and rewords the computed answer. When AI is off, unavailable, failing or
+    over today's limit, the rule-based answer is returned with `ai_fallback` saying why."""
+    yield "status", "understanding"
     snap, today = context(db, business)
     language = body.language or business.language
     prev = body.context.model_dump() if body.context else None
-    result = copilot_svc.answer(snap, today, body.question, language, features(business), context=prev)
+    earlier = [t.text for t in body.history if t.role == "user"]
     status = ai.status()
-    llm_ok = body.use_llm and business.ai_consent and status["tasks"]["explain"]["available"]
-    result["llm_available"] = status["tasks"]["explain"]["available"]
-    result["llm_consent"] = business.ai_consent
-    result["ai_provider"] = None
+    available = status["tasks"]["explain"]["available"]
+    llm_ok = body.use_llm and business.ai_consent and available
+    fallback = None if llm_ok else ("disabled" if not business.ai_consent or not body.use_llm else "unavailable")
     names = list(snap.customers.values()) + list(snap.suppliers.values()) + [business.name]
+
+    yield "status", "calculating"
+    result = copilot_svc.answer(snap, today, body.question, language, features(business), context=prev)
     if llm_ok and result["intent"] in ("unknown", "clarify"):
         # The rules could not place the question: let the model map it to one of our tools (it sees only the
-        # question with names masked, never records). The tool then computes the answer from the user's data.
+        # user's questions with names masked, never records). The tool then computes the answer from the user's data.
         try:
             ai.consume_quota(db, business, "explain", today)
-            picked = ai_tasks.interpret(body.question, names, (prev or {}).get("intent"))
+            picked = ai_tasks.interpret(body.question, names, (prev or {}).get("intent"), earlier)
         except ApiError:
-            picked = None
+            picked, llm_ok, fallback = None, False, "quota"
         if picked:
             intent, params, provider = picked
             interpreted = copilot_svc.answer(snap, today, body.question, language, features(business),
                                              override={"intent": intent, "params": params})
             if interpreted["intent"] not in ("unknown", "error"):
-                result = {**interpreted, "llm_available": True, "llm_consent": True, "ai_provider": None,
-                          "interpreted_by": provider}
-    if llm_ok and result["intent"] not in ("unknown", "out_of_scope", "clarify", "error"):
+                result = {**interpreted, "interpreted_by": provider}
+    result.update(llm_available=available, llm_consent=business.ai_consent, ai_provider=None)
+
+    if llm_ok and result["intent"] not in AI_OFF:
+        yield "status", "writing"
         try:
             ai.consume_quota(db, business, "explain", today)
         except ApiError:
-            if result.get("interpreted_by") not in ("groq", "gemini"):
-                raise
-            return result  # the interpretation used the last unit: keep the template wording
-        lang = "roman_ur" if result["language"] == "en" and copilot_svc.is_roman_urdu(body.question) else result["language"]
-        out = ai_tasks.explain(body.question, result["answer"], result["evidence"], lang, names)
-        if out:
-            text, provider = out
-            result["answer"] = isolate_ltr(text.replace("\u2066", "").replace("\u2069", "")) if lang == "ur" else text
-            result["used_llm"] = True
-            result["ai_provider"] = provider
+            fallback = "quota"  # keep the rule-based wording; the figures are already computed
+        else:
+            lang = "roman_ur" if result["language"] == "en" and copilot_svc.is_roman_urdu(body.question) else result["language"]
+            out = ai_tasks.explain(body.question, result["answer"], result["evidence"], lang, names)
+            if out:
+                text, provider = out
+                result["answer"] = isolate_ltr(text.replace("\u2066", "").replace("\u2069", "")) if lang == "ur" else text
+                result["used_llm"] = True
+                result["ai_provider"] = provider
+            else:
+                fallback = "ai_error"
+    result["ai_fallback"] = None if result.get("used_llm") else fallback
+    yield "answer", result
+
+
+@router.post("/copilot/query")
+def copilot(body: CopilotIn, business: Business = Depends(require_feature("copilot")), db: Session = Depends(get_db)):
+    result = None
+    for kind, payload in _copilot_steps(body, business, db):
+        if kind == "answer":
+            result = payload
     return result
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+
+
+@router.post("/copilot/stream")
+def copilot_stream(body: CopilotIn, business: Business = Depends(require_feature("copilot")),
+                   db: Session = Depends(get_db)):
+    """Same answer as /copilot/query, streamed as Server-Sent Events: `status` events while it works
+    ({stage, label}), then one `answer` event, or one `error` event ({code, message})."""
+    def events():
+        try:
+            for kind, payload in _copilot_steps(body, business, db):
+                if kind == "status":
+                    yield _sse("status", {"stage": payload, "label": COPILOT_STAGES[payload]})
+                else:
+                    yield _sse("answer", payload)
+        except ApiError as exc:
+            yield _sse("error", {"code": exc.code, "message": exc.message})
+        except Exception:  # never leak internals into the stream
+            log.error("copilot stream failed", exc_info=True)
+            yield _sse("error", {"code": "internal_error", "message": "Copilot couldn't answer just now. Please try again."})
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
 
 
 @router.get("/ai/status")

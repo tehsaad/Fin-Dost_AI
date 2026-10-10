@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Bot, Send, ShieldCheck, Sparkles, User } from "lucide-react";
+import { Bot, Brain, Calculator, PenLine, Send, ShieldCheck, Sparkles, User } from "lucide-react";
 import { PageHeader } from "@/components/app/shell";
 import { useApp } from "@/components/app/app-provider";
 import { Button } from "@/components/shared/button";
 import { Notice, Spinner } from "@/components/shared/feedback";
-import { api, errorMessage } from "@/lib/api";
+import { useAiAssistance } from "@/components/app/ai-assistance";
+import { errorMessage } from "@/lib/api";
+import { askCopilot, buildHistory } from "@/lib/copilot-stream";
 import { cn } from "@/lib/format";
-import type { CopilotAnswer, CopilotContext } from "@/lib/types";
+import type { CopilotAnswer, CopilotContext, CopilotStage } from "@/lib/types";
 
 type Msg = { role: "user"; text: string } | { role: "bot"; answer: CopilotAnswer } | { role: "error"; text: string };
 
@@ -34,10 +36,22 @@ const LINK_LABEL: Record<string, string> = { "/dashboard": "Dashboard", "/simula
   "/recovery": "Recovery", "/reports": "Reports", "/transactions?tab=receivables": "Receivables",
   "/transactions?tab=payables": "Payables", "/transactions": "Transactions", "/import": "Import" };
 const NOT_CALCULATED = new Set(["clarify", "unknown", "out_of_scope", "error"]);
+const STAGES: { id: CopilotStage; label: string; icon: typeof Brain }[] = [
+  { id: "understanding", label: "Understanding…", icon: Brain },
+  { id: "calculating", label: "Calculating…", icon: Calculator },
+  { id: "writing", label: "Writing…", icon: PenLine },
+];
+const FALLBACK_NOTE: Record<string, string> = {
+  quota: "Today's AI limit is used up, so this answer uses FinDost's own wording. The figures are the same.",
+  ai_error: "The AI service didn't respond cleanly, so this answer uses FinDost's own wording. The figures are the same.",
+  unavailable: "AI isn't set up on the server right now, so this answer uses FinDost's own wording.",
+};
 
 export default function CopilotPage() {
   const { business, has } = useApp();
+  const ai = useAiAssistance();
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [stage, setStage] = useState<CopilotStage | null>(null);
   const [input, setInput] = useState("");
   const [lang, setLang] = useState<"en" | "ur">(business.language);
   const [busy, setBusy] = useState(false);
@@ -52,17 +66,22 @@ export default function CopilotPage() {
   const ask = async (question: string) => {
     const q = question.trim();
     if (!q || busy) return;
+    // The last 8 messages go along so follow-ups ("another 10%?") are read in context. Figures are always
+    // recomputed from your records on the server; earlier answers are never used as numbers.
+    const history = buildHistory(messages);
     setMessages((m) => [...m, { role: "user", text: q }]);
     setInput("");
     setBusy(true);
+    setStage("understanding");
     try {
-      const answer = await api<CopilotAnswer>("/copilot/query", { body: { question: q, language: lang, context } });
+      const answer = await askCopilot({ question: q, language: lang, context, history }, setStage);
       setMessages((m) => [...m, { role: "bot", answer }]);
       if (answer.context) setContext(answer.context);
     } catch (e) {
       setMessages((m) => [...m, { role: "error", text: errorMessage(e) }]);
     } finally {
       setBusy(false);
+      setStage(null);
     }
   };
 
@@ -76,6 +95,13 @@ export default function CopilotPage() {
             ))}
           </div>
         } />
+      {!ai.enabled && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200" role="status">
+          <p>AI answers are off. You still get exact answers from FinDost&apos;s own rules; turning AI on lets it understand free-form questions and word answers naturally.</p>
+          <Button size="sm" onClick={() => { void ai.setAi(true); }} disabled={ai.saving}>{ai.saving ? <Spinner /> : <Sparkles className="h-4 w-4" />} Turn ON AI Answers</Button>
+          {ai.error && <p className="w-full text-red-700 dark:text-red-300">{ai.error}</p>}
+        </div>
+      )}
       <div className="flex-1 space-y-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900" aria-live="polite">
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center text-center">
@@ -115,6 +141,7 @@ export default function CopilotPage() {
                 ) : null}
                 {m.answer.links.map((l) => <Link key={l} href={l} className="text-[11px] font-medium text-brand-700 hover:underline dark:text-brand-400">Open {LINK_LABEL[l] ?? l} →</Link>)}
               </div>
+              {m.answer.ai_fallback && FALLBACK_NOTE[m.answer.ai_fallback] && <p className="text-[11px] text-amber-700 dark:text-amber-300">{FALLBACK_NOTE[m.answer.ai_fallback]}</p>}
               {m.answer.suggestions && m.answer.suggestions.length > 0 && i === messages.length - 1 && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {m.answer.suggestions.map((s) => <button key={s} onClick={() => ask(s)} disabled={busy} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-brand-950/30">{s}</button>)}
@@ -123,7 +150,24 @@ export default function CopilotPage() {
             </div>
           </div>
         ))}
-        {busy && <div className="flex items-center gap-2 text-xs text-slate-500"><Spinner /> Calculating…</div>}
+        {busy && (
+          <div className="flex flex-wrap items-center gap-1.5" role="status" aria-live="polite">
+            {STAGES.filter((st) => st.id !== "writing" || stage === "writing").map((st) => {
+              const order = STAGES.findIndex((x) => x.id === stage);
+              const idx = STAGES.findIndex((x) => x.id === st.id);
+              const state = idx < order ? "done" : idx === order ? "active" : "todo";
+              const Icon = st.icon;
+              return (
+                <span key={st.id} className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition",
+                  state === "active" && "border-brand-300 bg-brand-50 text-brand-800 dark:border-brand-700 dark:bg-brand-950/40 dark:text-brand-300",
+                  state === "done" && "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
+                  state === "todo" && "border-slate-200 text-slate-400 dark:border-slate-700")}>
+                  {state === "active" ? <Spinner /> : <Icon className="h-3 w-3" />}{st.label}
+                </span>
+              );
+            })}
+          </div>
+        )}
         <div ref={endRef} />
       </div>
       <form onSubmit={(e) => { e.preventDefault(); ask(input); }} className="mt-3 flex gap-2">
@@ -133,7 +177,7 @@ export default function CopilotPage() {
         <Button type="submit" disabled={busy || !input.trim()} aria-label="Send"><Send className="h-4 w-4" /></Button>
       </form>
       <p className="mt-2 text-[11px] text-slate-500">
-        {business.ai_consent ? "AI is on: your question and computed figures (with customer and supplier names masked) may be sent to the language model to understand the question and word the answer. Numbers always come from FinDost's engine, and any answer with an unverified number is discarded." : "AI rephrasing is off — answers come from FinDost's own templates. You can opt in from Settings."}
+        {ai.enabled ? "AI is on: your question and computed figures (with customer and supplier names masked) may be sent to the language model to understand the question and word the answer. Numbers always come from FinDost's engine, and any answer with an unverified number is discarded." : "AI is off: answers come from FinDost's own rules and wording. You can turn it on above or in Settings."}
       </p>
     </div>
   );

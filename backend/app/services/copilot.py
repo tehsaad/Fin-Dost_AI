@@ -16,7 +16,7 @@ from datetime import date, timedelta
 from typing import Callable
 
 from ..money import fmt_pkr
-from .copilot_nlu import (CONFIDENT, PARAM_KEYS, TOOL_INTENTS, URDU_SCRIPT, Understanding, is_out_of_scope,
+from .copilot_nlu import (CONFIDENT, TOOL_INTENTS, clean_params, URDU_SCRIPT, Understanding, is_out_of_scope,
                           language_of, parse_amount, parse_day, relevant_params, understand)
 from .forecast import run_forecast
 from .i18n import GLOSSARY, isolate_ltr, urdu_affordability, urdu_dashboard_summary, urdu_shortage_reason
@@ -574,8 +574,8 @@ def answer(snap: Snapshot, today: date, question: str, language: str = "en",
     lang = detect_language(question, language)
     low = question.lower()
     if override and override.get("intent") in TOOL_INTENTS:
-        params = {k: v for k, v in (override.get("params") or {}).items() if k in PARAM_KEYS and v is not None}
-        u = Understanding(override["intent"], CONFIDENT, params)
+        # Model-picked parameters are untrusted: same key whitelist and numeric bounds as client context.
+        u = Understanding(override["intent"], CONFIDENT, clean_params(override.get("params")))
     else:
         u = understand(question, today, context)
     if u.language_only:
