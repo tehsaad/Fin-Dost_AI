@@ -32,7 +32,7 @@ const FEATURES = [
   { icon: LifeBuoy, title: "Recovery strategies", urdu: "بحالی", text: "Collect, renegotiate, delay or cut — every option re-runs the forecast and is ranked by your own priorities." },
   { icon: Bot, title: "Urdu Copilot", urdu: "مددگار", text: "“Kya main agle hafte 50,000 kharch kar sakta hoon?” Answers come from your numbers, never made up." },
   { icon: FileUp, title: "Smart CSV import", urdu: "ڈیٹا شامل کریں", text: "Bank and wallet exports, Roman Urdu headers, Rs. formats and DD/MM dates — validated and de-duplicated." },
-  { icon: ShieldCheck, title: "Private by design", urdu: "رازداری", text: "Each login sees only its own data. No bank passwords. AI rephrasing only with your consent and masked names." },
+  { icon: ShieldCheck, title: "Private by design", urdu: "رازداری", text: "Each login sees only its own data. No bank passwords. AI is used only with your consent, with customer names masked: it can help understand a Copilot question and word the answer, but never calculates your figures." },
   { icon: Languages, title: "Made for Pakistan", urdu: "پاکستان کے لیے", text: "PKR everywhere, lakh/crore summaries, Urdu explanations and simple words for profit, udhaar and cash flow." },
 ];
 
