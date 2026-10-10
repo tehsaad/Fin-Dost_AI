@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .db import init_db
 from .errors import install_error_handlers
-from .routers import account, analytics, imports, internal, inventory, ledger, scenarios
+from .routers import account, analytics, imports, internal, inventory, ledger, planning, scenarios, team, workflow
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
@@ -38,7 +38,7 @@ app.add_middleware(
 )
 install_error_handlers(app)
 
-for module in (account, ledger, analytics, scenarios, inventory, imports, internal):
+for module in (account, ledger, analytics, scenarios, inventory, imports, internal, planning, workflow, team):
     app.include_router(module.router, prefix="/api/v1")
 
 

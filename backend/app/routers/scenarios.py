@@ -13,7 +13,7 @@ from ..schemas import Adjustments, CompareScenariosIn, RecoveryCompareIn, Recove
 from ..services.forecast import build_components, project
 from ..services.ledger import payable_view, receivable_view
 from ..services.recovery import compare_strategies, recommend
-from ..services.simulation import ACTION_TYPES, SHOCK_PRESETS, AdjustmentError, simulate
+from ..services.simulation import ACTION_TYPES, PERSONAL_PRESETS, SHOCK_PRESETS, AdjustmentError, simulate
 from .common import context, owned
 
 router = APIRouter(tags=["scenarios"])
@@ -37,7 +37,7 @@ def _scenario_dict(sc: FinancialScenario) -> dict:
 def presets(business: Business = Depends(require_feature("simulator")), db: Session = Depends(get_db)):
     snap, today = context(db, business)
     return {
-        "presets": SHOCK_PRESETS,
+        "presets": PERSONAL_PRESETS if business.kind in ("household", "student") else SHOCK_PRESETS,
         "receivables": [receivable_view(r, today) for r in snap.receivables if r.outstanding > 0],
         "payables": [payable_view(p, today) for p in snap.payables if p.outstanding > 0],
         "customers": [{"id": k, "name": v} for k, v in snap.customers.items()],

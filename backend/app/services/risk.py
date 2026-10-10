@@ -359,3 +359,25 @@ def compute_alerts(snap: Snapshot, today: date, forecast: dict, inventory: dict 
 
     alerts.sort(key=lambda a: -a["score"])
     return alerts
+
+
+def budget_overrun_alerts(budget_report: dict) -> list[dict]:
+    """One alert per category whose recorded spending this month exceeds the budget the user entered."""
+    out = []
+    for line in budget_report.get("lines", []):
+        if line["status"] != "over":
+            continue
+        over = line["actual_paisa"] - line["budget_paisa"]
+        pct = line["used_pct"]
+        out.append(_alert(
+            "budget_overrun", line["category"][:80], 55 + min(int(pct - 100), 30),
+            f"{line['category']} is over budget by {fmt_pkr(over)} ({pct:.0f}% used)",
+            f"{fmt_pkr(line['actual_paisa'])} spent in {budget_report['month']} against a monthly budget of "
+            f"{fmt_pkr(line['budget_paisa'])}.",
+            amounts={"budget": line["budget_paisa"], "actual": line["actual_paisa"], "over": over},
+            dates={"from": budget_report["from"], "to": budget_report["to"]},
+            impact_paisa=over, impact_label="Spent above this month's budget",
+            next_step="Open Budget to review the category, or adjust the budget if it was set too low.",
+            limitations="Compares recorded expenses with the budget you entered; unrecorded spending is not counted.",
+            link="/budget"))
+    return out

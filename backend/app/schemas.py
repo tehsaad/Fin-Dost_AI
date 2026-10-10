@@ -262,3 +262,52 @@ class RowCorrectionIn(_Base):
     party: str | None = Field(default=None, max_length=120)
     account: Account | None = None
     due_date: _Date | None = None
+
+
+# ------------------------------------------------------------------------- planning, actions, team
+
+class BudgetIn(_Base):
+    category: str = Field(min_length=1, max_length=60)
+    monthly_amount_paisa: int = Field(gt=0, le=MAX_PAISA)
+
+
+class GoalIn(_Base):
+    name: str = Field(min_length=1, max_length=80)
+    target_paisa: int = Field(gt=0, le=MAX_PAISA)
+    saved_paisa: int = Field(default=0, ge=0, le=MAX_PAISA)
+    target_date: _Date
+
+
+class GoalUpdate(_Base):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    target_paisa: int | None = Field(default=None, gt=0, le=MAX_PAISA)
+    saved_paisa: int | None = Field(default=None, ge=0, le=MAX_PAISA)
+    target_date: _Date | None = None
+
+
+class ActionIn(_Base):
+    title: str = Field(min_length=3, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    source_type: Literal["recovery", "alert", "control", "manual", "copilot"] = "manual"
+    source_ref: str | None = Field(default=None, max_length=120)
+    # Engine adjustments (e.g. a recovery strategy). The server re-simulates them to estimate impact.
+    adjustments: list[dict[str, Any]] = Field(default_factory=list, max_length=10)
+    due_on: _Date | None = None
+    requires_approval: bool = True
+
+
+class ActionDecisionIn(_Base):
+    note: str | None = Field(default=None, max_length=500)
+
+
+class InviteIn(_Base):
+    email: str = Field(min_length=3, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    role: Literal["owner", "editor", "viewer"]
+
+
+class RoleIn(_Base):
+    role: Literal["owner", "editor", "viewer"]
+
+
+class AcceptInviteIn(_Base):
+    token: str = Field(min_length=20, max_length=200)

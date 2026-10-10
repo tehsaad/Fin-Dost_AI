@@ -213,9 +213,11 @@ def test_inventory_movement_does_not_touch_ledger_unless_asked(client):
 
 
 def test_impact_separates_measured_and_hypothetical(client):
+    # SDG impact moved from every workspace to the public landing page (no login, no user data).
     h = onboard(client, "u12", "sme", demo=True)
-    imp = client.get("/api/v1/impact", headers=h).json()
-    assert imp["measured"]["benchmark"]["businesses_evaluated"] == 120
+    assert client.get("/api/v1/impact", headers=h).status_code == 403
+    imp = client.get("/api/v1/public/benchmark").json()
+    assert imp["businesses_evaluated"] == 120 and "synthetic" in imp["note"].lower()
     assert "not a measured outcome" in imp["hypothetical"]["caveat"]
     assert {t["target"] for t in imp["sdg_targets"]} == {"1.4", "1.5", "8.3", "9.3", "10.2"}
 

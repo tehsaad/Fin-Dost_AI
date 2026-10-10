@@ -375,3 +375,126 @@ class AiUsage(Base):
     day: Mapped[date] = mapped_column(Date)
     task: Mapped[str] = mapped_column(String(24))
     calls: Mapped[int] = mapped_column(Integer, default=0)
+
+
+# ------------------------------------------------------------------------- shared workspaces (enterprise teams)
+
+WORKSPACE_ROLES = ("owner", "editor", "viewer")
+
+
+class WorkspaceMember(Base):
+    """A user who may access a workspace they do not own. The workspace creator (`businesses.owner_id`) is the
+    permanent owner and is never stored here, so the last owner can never be removed or demoted."""
+
+    __tablename__ = "workspace_members"
+    __table_args__ = (
+        UniqueConstraint("business_id", "user_id", name="uq_member_workspace_user"),
+        CheckConstraint(f"role IN {WORKSPACE_ROLES}", name="ck_member_role"),
+        CheckConstraint("status IN ('active', 'removed')", name="ck_member_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    business_id: Mapped[str] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    role: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(10), default="active")
+    invited_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class WorkspaceInvitation(Base):
+    """Single-use, expiring invitation for one email address. Only a SHA-256 hash of the token is stored."""
+
+    __tablename__ = "workspace_invitations"
+    __table_args__ = (
+        CheckConstraint(f"role IN {WORKSPACE_ROLES}", name="ck_invite_role"),
+        CheckConstraint("status IN ('pending', 'accepted', 'revoked')", name="ck_invite_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    business_id: Mapped[str] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    email: Mapped[str] = mapped_column(String(254))
+    role: Mapped[str] = mapped_column(String(10))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    status: Mapped[str] = mapped_column(String(10), default="pending")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    invited_by: Mapped[str] = mapped_column(String(64))
+    accepted_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# ------------------------------------------------------------------------- planning
+
+class Budget(Base):
+    """Monthly spending budget for one expense category (entered by the user, never invented)."""
+
+    __tablename__ = "budgets"
+    __table_args__ = (
+        UniqueConstraint("business_id", "category", name="uq_budget_category"),
+        CheckConstraint("monthly_amount_paisa > 0", name="ck_budget_amount"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    business_id: Mapped[str] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    category: Mapped[str] = mapped_column(String(60))
+    monthly_amount_paisa: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SavingsGoal(Base):
+    """A personal savings target. `saved_paisa` is what the user says they have set aside (not inferred)."""
+
+    __tablename__ = "savings_goals"
+    __table_args__ = (
+        CheckConstraint("target_paisa > 0", name="ck_goal_target"),
+        CheckConstraint("saved_paisa >= 0", name="ck_goal_saved"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    business_id: Mapped[str] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    target_paisa: Mapped[int] = mapped_column(BigInteger)
+    saved_paisa: Mapped[int] = mapped_column(BigInteger, default=0)
+    target_date: Mapped[date] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+# ------------------------------------------------------------------------- controlled actions
+
+ACTION_STATUSES = ("proposed", "pending_approval", "approved", "rejected", "completed", "cancelled")
+
+
+class FinanceAction(Base):
+    """A recommendation or task moving through proposal → approval → completion. Nothing here executes money
+    movements: 'completed' means a person recorded that they did it."""
+
+    __tablename__ = "finance_actions"
+    __table_args__ = (CheckConstraint(f"status IN {ACTION_STATUSES}", name="ck_action_status"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    business_id: Mapped[str] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    source_type: Mapped[str] = mapped_column(String(16))  # recovery | alert | control | manual | copilot
+    source_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    adjustments: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    estimated_impact_paisa: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    impact_basis: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    due_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(18), default="proposed")
+    created_by: Mapped[str] = mapped_column(String(64))
+    decided_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    completed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    outcome_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

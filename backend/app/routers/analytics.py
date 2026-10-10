@@ -17,7 +17,7 @@ from ..config import get_settings
 from ..config import today as get_today
 from ..db import get_db
 from ..errors import ApiError, not_found
-from ..models import Business, FinancialScenario, ForecastRun, RiskAlert
+from ..models import Business, FinanceAction, FinancialScenario, ForecastRun, RiskAlert
 from ..money import fmt_pkr
 from ..schemas import CopilotIn
 from ..services import copilot as copilot_svc
@@ -32,7 +32,9 @@ from ..services.insights import data_quality, report_insights
 from ..services.ledger import account_balances, period_summary
 from ..services.inventory import inventory_analytics
 from ..services.recovery import recommend
-from ..services.risk import compute_alerts
+from ..services.controls import run_checks
+from ..services.planning import budget_vs_actual
+from ..services.risk import budget_overrun_alerts, compute_alerts
 from ..services.simulation import simulate
 from .common import context, csv_safe, features, forecast_and_store
 
@@ -67,9 +69,22 @@ def _alerts_with_state(db: Session, business: Business, alerts: list[dict], toda
     return out
 
 
+def _budget_report(db: Session, business: Business, snap, today) -> dict | None:
+    if "budget" not in features(business):
+        return None
+    from .planning import budget_lines
+
+    lines = budget_lines(db, business)
+    return budget_vs_actual(snap, lines, today) if lines else None
+
+
 def _full_alerts(db: Session, business: Business, snap, today, forecast) -> list[dict]:
     inv = inventory_analytics(snap, today) if "inventory" in features(business) else None
-    return _alerts_with_state(db, business, compute_alerts(snap, today, forecast, inv), today)
+    alerts = compute_alerts(snap, today, forecast, inv)
+    budget = _budget_report(db, business, snap, today)
+    if budget:
+        alerts = sorted(alerts + budget_overrun_alerts(budget), key=lambda a: -a["score"])
+    return _alerts_with_state(db, business, alerts, today)
 
 
 @router.get("/dashboard")
@@ -201,10 +216,35 @@ def financial_report(business: Business = Depends(require_feature("reports")), d
                              "evidence_quality": st["evidence_quality"], "score": st["score"]}
                             for st in rec["strategies"][:5]],
         "scenario_comparison": scenarios,
+        "budget": _budget_report(db, business, snap, today),
+        "actions": _action_summary(db, business),
+        "controls": _controls_summary(snap, today) if "controls" in features(business) else None,
         "data_quality": dash["data_quality"],
         "limitations": limitations,
         "disclaimer": "Decision support only. Forecasts and simulations are estimates, not guarantees.",
     }
+
+
+def _controls_summary(snap, today) -> dict:
+    checks = run_checks(snap, today)
+    return {"issue_count": checks["issue_count"], "records_flagged": checks["records_flagged"], "scope": checks["scope"],
+            "issues": [{"title": c["title"], "count": c["count"], "severity": c["severity"]}
+                       for c in checks["checks"] if c["status"] == "issue"]}
+
+
+def _action_summary(db: Session, business: Business) -> dict | None:
+    if "actions" not in features(business):
+        return None
+    rows = db.scalars(select(FinanceAction).where(FinanceAction.business_id == business.id)
+                      .order_by(FinanceAction.created_at.desc())).all()
+    counts: dict[str, int] = {}
+    for a in rows:
+        counts[a.status] = counts.get(a.status, 0) + 1
+    open_items = [{"title": a.title, "status": a.status, "estimated_impact_paisa": a.estimated_impact_paisa}
+                  for a in rows if a.status in ("proposed", "pending_approval", "approved")][:10]
+    return {"counts": counts, "open": open_items,
+            "note": "Approved means a person approved the plan; completed means a person recorded it as done. "
+                    "FinDost does not move money."}
 
 
 @router.get("/reports/financial.csv")
@@ -250,6 +290,15 @@ def financial_report_csv(business: Business = Depends(require_feature("reports")
         c = sc["comparison"]
         w.writerow([csv_safe(v) for v in ("scenario", sc["name"], c["min_balance_change_paisa"] / 100,
                     f"shortage {c['scenario_shortage_date'] or 'none'} (baseline {c['baseline_shortage_date'] or 'none'})")])
+    if rep.get("budget"):
+        for line in rep["budget"]["lines"]:
+            w.writerow([csv_safe(v) for v in ("budget", line["category"], line["actual_paisa"] / 100,
+                                              f"budget {line['budget_paisa'] / 100:.2f} ({line['used_pct']}% used, {line['status']})")])
+    if rep.get("actions"):
+        for st, n in sorted(rep["actions"]["counts"].items()):
+            w.writerow(("actions", st, n, "count"))
+    if rep.get("controls"):
+        w.writerow(("controls", "Data checks with issues", rep["controls"]["issue_count"], "count"))
     for note in rep["limitations"]:
         w.writerow([csv_safe(v) for v in ("limitation", note, "", "text")])
     buf.seek(0)
@@ -259,6 +308,53 @@ def financial_report_csv(business: Business = Depends(require_feature("reports")
 
 COPILOT_STAGES = {"understanding": "Understanding…", "calculating": "Calculating…", "writing": "Writing…"}
 AI_OFF = ("unknown", "out_of_scope", "clarify", "error")
+
+
+def _agent_extra_tools(db: Session, business: Business, snap, today) -> dict:
+    """Database-backed tools for the Copilot agent; each returns engine-computed text and evidence lines."""
+    def budget() -> dict:
+        rep = _budget_report(db, business, snap, today)
+        if not rep:
+            return {"answer": "No budgets have been set yet, so budget vs actual cannot be calculated. Add them on the Budget page.",
+                    "evidence": [], "links": ["/budget"]}
+        t = rep["totals"]
+        ev = [f"{x['category']}: {fmt_pkr(x['actual_paisa'])} of {fmt_pkr(x['budget_paisa'])} ({x['used_pct']}%, {x['status']})"
+              for x in rep["lines"]]
+        return {"answer": f"In {rep['month']} you have spent {fmt_pkr(t['actual_paisa'])} against budgets of "
+                          f"{fmt_pkr(t['budget_paisa'])}.", "evidence": ev, "links": ["/budget"]}
+
+    def approvals() -> dict:
+        summary = _action_summary(db, business)
+        if summary is None or not summary["counts"]:
+            return {"answer": "There are no proposed actions or tasks yet.", "evidence": [], "links": ["/actions"]}
+        ev = [f"{a['title']} — {a['status'].replace('_', ' ')}"
+              + (f", estimated effect on lowest balance {fmt_pkr(a['estimated_impact_paisa'])}" if a["estimated_impact_paisa"] is not None else "")
+              for a in summary["open"]]
+        counts = ", ".join(f"{n} {st.replace('_', ' ')}" for st, n in sorted(summary["counts"].items()))
+        return {"answer": f"Actions by status: {counts}. {summary['note']}", "evidence": ev, "links": ["/actions"]}
+
+    def data_checks() -> dict:
+        c = _controls_summary(snap, today)
+        ev = [f"{i['title']}: {i['count']} record(s) ({i['severity']})" for i in c["issues"]]
+        return {"answer": f"{c['issue_count']} data check(s) found issues covering {c['records_flagged']} record(s). {c['scope']}",
+                "evidence": ev, "links": ["/controls"]}
+
+    def goals() -> dict:
+        from ..models import SavingsGoal
+        from ..services.planning import goal_view
+
+        rows = db.scalars(select(SavingsGoal).where(SavingsGoal.business_id == business.id)).all()
+        if not rows:
+            return {"answer": "No savings goals have been set yet. Add one on the Goals page.", "evidence": [], "links": ["/goals"]}
+        views = [goal_view(g, snap, today) for g in rows]
+        ev = [f"{v['name']}: {fmt_pkr(v['saved_paisa'])} of {fmt_pkr(v['target_paisa'])} by {v['target_date']}, "
+              f"{fmt_pkr(v['monthly_needed_paisa'])} a month needed ({v['status'].replace('_', ' ')})" for v in views]
+        return {"answer": " ".join(v["note"] for v in views[:2]), "evidence": ev, "links": ["/goals"]}
+
+    feats = features(business)
+    tools = {"budget": budget, "approvals": approvals, "data_checks": data_checks, "goals": goals}
+    need = {"budget": "budget", "approvals": "actions", "data_checks": "controls", "goals": "goals"}
+    return {k: v for k, v in tools.items() if need[k] in feats}
 
 
 def _copilot_steps(body: CopilotIn, business: Business, db: Session):
@@ -308,7 +404,8 @@ def _copilot_steps(body: CopilotIn, business: Business, db: Session):
             llm_ok, fallback = False, "quota"
         else:
             history = [agent.Turn(t.role, t.text) for t in body.history]
-            planned = agent.answer(snap, today, body.question, history, features(business), names, business.kind)
+            planned = agent.answer(snap, today, body.question, history, features(business), names, business.kind,
+                                   _agent_extra_tools(db, business, snap, today))
             if planned:
                 result = planned
     ai_provider = result.get("ai_provider")
@@ -393,6 +490,17 @@ def ai_test(business: Business = Depends(get_business), db: Session = Depends(ge
             "grounded": numbers_grounded(res.data.answer, sample)}
 
 
+HYPOTHETICAL = {
+    "pathway": [
+        "Earlier warning of a cash shortage gives an owner time to act (collect, renegotiate, delay purchases).",
+        "Acting earlier can reduce missed supplier payments, emergency borrowing at high cost, or forced closure days.",
+        "Fewer disruptions can support business continuity and the jobs and household income that depend on it.",
+    ],
+    "caveat": "This is a plausible pathway, not a measured outcome. FinDost has not yet been evaluated with real "
+              "businesses, so no claim is made that it reduces poverty, saves businesses or creates jobs.",
+}
+
+
 @router.get("/public/benchmark", tags=["meta"])
 def public_benchmark():
     """Synthetic benchmark summary for the public landing page (no user data involved)."""
@@ -412,6 +520,13 @@ def public_benchmark():
         "naive_false_positive_rate_pct": b["naive_baseline"]["false_positive_rate"],
         "avg_warning_lead_days": b["avg_warning_lead_days"],
         "recovery_scenarios_evaluated": b["recovery_scenarios_evaluated"],
+        "median_abs_error_day14_paisa": b["median_abs_error_day14_paisa"],
+        "naive_median_abs_error_day14_paisa": b["naive_median_abs_error_day14_paisa"],
+        "band_coverage_day14_pct": b.get("band_coverage_day14_pct"),
+        "definitions": b["definitions"],
+        "limitations": b["limitations"],
+        "sdg_targets": SDG_TARGETS,
+        "hypothetical": HYPOTHETICAL,
         "note": "Measured on synthetic, held-out test businesses - not real-world outcomes.",
     }
 
@@ -446,14 +561,6 @@ def impact(business: Business = Depends(require_feature("impact")), db: Session 
                                                      if rec and rec["combined_plan"] else None),
             },
         },
-        "hypothetical": {
-            "pathway": [
-                "Earlier warning of a cash shortage gives an owner time to act (collect, renegotiate, delay purchases).",
-                "Acting earlier can reduce missed supplier payments, emergency borrowing at high cost, or forced closure days.",
-                "Fewer disruptions can support business continuity and the jobs and household income that depend on it.",
-            ],
-            "caveat": "This is a plausible pathway, not a measured outcome. FinDost has not yet been evaluated with real "
-                      "businesses, so no claim is made that it reduces poverty, saves businesses or creates jobs.",
-        },
+        "hypothetical": HYPOTHETICAL,
         "sdg_targets": SDG_TARGETS,
     }

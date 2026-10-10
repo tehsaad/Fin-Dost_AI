@@ -28,7 +28,7 @@ from .snapshot import Snapshot
 SHOCK_TYPES = {"sales_decline", "delayed_payment", "supplier_price_increase", "unexpected_expense",
                "utility_increase", "rent_increase", "business_interruption", "flood_disruption", "customer_loss"}
 WHAT_IF_TYPES = {"move_receivable", "move_payable", "sales_change", "opex_change", "purchase_change",
-                 "emergency_expense", "revenue_recovery"}
+                 "emergency_expense", "revenue_recovery", "income_change", "income_delay"}
 ACTION_TYPES = {"collect_receivables", "request_partial_payment", "defer_payables", "reduce_discretionary",
                 "delay_purchases", "liquidate_stock", "cash_injection"}
 ALL_TYPES = SHOCK_TYPES | WHAT_IF_TYPES | ACTION_TYPES
@@ -162,6 +162,32 @@ def apply_adjustment(comp: Components, snap: Snapshot, adj: dict[str, Any]) -> l
         comp.var_out["utilities"][1:] *= factor
         _scale_events(comp, lambda e: e.amount < 0 and is_utility(e.category), factor)
         notes.append(f"Utility bills x{factor:.2f}")
+
+    elif kind == "income_change":
+        # Personal finance: salary/allowance (monthly patterns) and everyday income both change by `percent`.
+        pct = _num(adj, "percent", -20, -100, 200)
+        factor = 1 + pct / 100
+        w = _window(comp, adj, adj.get("duration_days"))
+        comp.var_in[w] *= factor
+        changed = 0
+        for ev in comp.events:
+            if ev.kind == "recurring_in" and w.start <= ev.day < w.stop:
+                before = ev.amount
+                ev.amount = int(round(ev.amount * factor))
+                changed += ev.amount - before
+        notes.append(f"Income x{factor:.2f} from day {w.start} to day {w.stop - 1}"
+                     + (f" (monthly income changes by {fmt_pkr(changed)})" if changed else ""))
+
+    elif kind == "income_delay":
+        delay = int(_num(adj, "delay_days", 10, 1, 90))
+        moved = 0
+        for ev in comp.events:
+            if ev.kind == "recurring_in":
+                ev.day += delay
+                ev.note = (ev.note + f"; arrives {delay} days late (simulated)").strip("; ")
+                moved += ev.amount
+        notes.append(f"{fmt_pkr(moved)} of salary/allowance arrives {delay} days late" if moved else
+                     "No monthly income pattern was found in your records, so nothing was delayed.")
 
     elif kind == "rent_increase":
         pct = _num(adj, "percent", 10, 0, 300)
@@ -398,6 +424,19 @@ def compare_paths(baseline: dict, scenario: dict) -> dict:
         "additional_pressure_paisa": int(max(-(diff[-1] if len(diff) else 0), 0)),
     }
 
+
+PERSONAL_PRESETS = [
+    {"id": "income_late", "label": "Salary / allowance arrives 10 days late", "icon": "clock",
+     "adjustments": [{"type": "income_delay", "delay_days": 10}]},
+    {"id": "income_drop", "label": "Income falls 20% for a month", "icon": "trending-down",
+     "adjustments": [{"type": "income_change", "percent": -20, "start_day": 1, "duration_days": 30}]},
+    {"id": "personal_emergency", "label": "Unexpected expense Rs. 15,000 next week", "icon": "alert-triangle",
+     "adjustments": [{"type": "unexpected_expense", "amount_paisa": 1_500_000, "day": 7, "label": "Unexpected expense"}]},
+    {"id": "bills_up", "label": "Utility bills up 30%", "icon": "zap",
+     "adjustments": [{"type": "utility_increase", "percent": 30}]},
+    {"id": "rent_up", "label": "Rent up 10%", "icon": "home",
+     "adjustments": [{"type": "rent_increase", "percent": 10}]},
+]
 
 SHOCK_PRESETS = [
     {"id": "sales_drop_20", "label": "Sales fall 20% for 3 weeks", "icon": "trending-down",

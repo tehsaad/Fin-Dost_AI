@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..auth import FEATURES, CurrentUser, get_business, get_current_user
+from ..auth import (FEATURES, PERMISSIONS, Access, CurrentUser, get_business, get_current_user, memberships,
+                    require_permission, resolve_access)
 from ..config import get_settings
 from ..config import today as get_today
 from ..db import get_db
@@ -46,15 +47,24 @@ def business_dict(b: Business) -> dict:
 
 
 @router.get("/me")
-def me(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
-    business = db.scalar(select(Business).where(Business.owner_id == user.id))
-    if business is not None:
+def me(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db),
+       x_workspace_id: str | None = Header(default=None)):
+    options = memberships(db, user.id)
+    try:
+        access = resolve_access(db, user, (x_workspace_id or "").strip()[:36] or None)
+    except ApiError:  # a stale/foreign workspace id from the browser: fall back to the default workspace
+        access = resolve_access(db, user, None)
+    business = access.business if access else None
+    if business is not None and access.role == "owner":
         rebase_demo_dates(db, business)
     suggested = user.metadata.get("account_type")
     return {
         "user": {"id": user.id, "email": user.email, "name": user.metadata.get("full_name") or user.metadata.get("name"),
                  "is_anonymous": user.is_anonymous},
         "business": business_dict(business) if business else None,
+        "role": access.role if access else None,
+        "permissions": sorted(PERMISSIONS.get(access.role, ())) if access else [],
+        "workspaces": [{"id": b.id, "name": b.name, "kind": b.kind, "role": r} for b, r in options],
         "needs_onboarding": business is None,
         "suggested_kind": suggested if suggested in FEATURES else None,
         "suggested_business_name": user.metadata.get("business_name"),
@@ -87,7 +97,8 @@ def get_business_settings(business: Business = Depends(get_business)):
 
 
 @router.put("/business")
-def update_business(body: BusinessUpdate, business: Business = Depends(get_business), db: Session = Depends(get_db)):
+def update_business(body: BusinessUpdate, access: Access = Depends(require_permission("admin")), db: Session = Depends(get_db)):
+    business = access.business
     data = body.model_dump(exclude_unset=True)
     if "opening_date" in data and data["opening_date"] > get_today():
         raise ApiError(422, "validation_error", "Opening date cannot be in the future")
@@ -108,9 +119,11 @@ def get_account_settings(business: Business = Depends(get_business)):
 
 
 @router.put("/account/settings")
-def update_account_settings(body: AccountSettingsIn, business: Business = Depends(get_business),
+def update_account_settings(body: AccountSettingsIn, access: Access = Depends(require_permission("admin")),
                             db: Session = Depends(get_db)):
-    """Saves immediately, so a toggle survives reloads and new sign-ins without pressing a separate Save."""
+    """Saves immediately, so a toggle survives reloads and new sign-ins without pressing a separate Save.
+    Workspace-wide (AI consent covers the company's data), so only an owner may change it."""
+    business = access.business
     if body.ai_assistance_enabled is not None:
         business.ai_consent = body.ai_assistance_enabled
     if body.language is not None:
@@ -121,7 +134,8 @@ def update_account_settings(body: AccountSettingsIn, business: Business = Depend
 
 
 @router.post("/business/reset-demo")
-def reset_demo(business: Business = Depends(get_business), db: Session = Depends(get_db)):
+def reset_demo(access: Access = Depends(require_permission("admin")), db: Session = Depends(get_db)):
+    business = access.business
     seed_demo(db, business, get_today())
     audit.record(db, business, "workspace", business.id, "reset", extra={"note": "demo data restored"})
     db.commit()
@@ -129,7 +143,8 @@ def reset_demo(business: Business = Depends(get_business), db: Session = Depends
 
 
 @router.post("/business/clear")
-def clear_data(business: Business = Depends(get_business), db: Session = Depends(get_db)):
+def clear_data(access: Access = Depends(require_permission("admin")), db: Session = Depends(get_db)):
+    business = access.business
     """Start fresh with your own data: removes all records (demo and user) for this workspace."""
     clear_business_data(db, business)
     business.is_demo = False

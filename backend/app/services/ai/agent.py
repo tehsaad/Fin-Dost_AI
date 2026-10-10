@@ -70,14 +70,20 @@ TOOL_DOCS: dict[str, str] = {
     "glossary": "Explain a finance term in plain words (set `term`).",
     "inventory": "Stock on hand: total stock value, low-stock items, slow-moving items and reorder suggestions.",
     "alerts": "The current early warnings (risk alerts) with severity and next step.",
+    "budget": "This month's budget vs actual spending by category (only budgets the user entered).",
+    "approvals": "Proposed actions and tasks: what is waiting for approval, approved, or open.",
+    "data_checks": "Data quality and control checks: duplicates, uncategorized, unmatched payments, inconsistencies.",
+    "goals": "Savings goals: progress, monthly amount needed and whether it fits recent income.",
 }
-AGENT_TOOLS = tuple(TOOL_INTENTS) + ("inventory", "alerts")
+EXTRA_TOOLS = ("budget", "approvals", "data_checks", "goals")  # provided by the router (they need the database)
+AGENT_TOOLS = tuple(TOOL_INTENTS) + ("inventory", "alerts") + EXTRA_TOOLS
 assert set(TOOL_DOCS) == set(AGENT_TOOLS)
 ToolName = Literal[AGENT_TOOLS]  # type: ignore[valid-type]
 
 FEATURE_FOR_TOOL = {"inventory": "inventory", "follow_up": "receivables", "party": "ledger", "alerts": "alerts",
                     "compare": "recovery", "sales_decline": "simulator", "delayed_collection": "simulator",
-                    "scenario": "simulator"}
+                    "scenario": "simulator", "budget": "budget", "approvals": "actions", "data_checks": "controls",
+                    "goals": "goals"}
 
 
 class ToolCall(BaseModel):
@@ -120,6 +126,10 @@ Rules you must always follow:
 8. Decision support only: never promise outcomes; simulations are estimates, not guarantees."""
 
 PLAN_TASK = """Decide what to do with the user's latest message.
+- Match the account type: for "student" and "household" talk about personal income, spending, bills, budget and
+  savings (never shops, stock or suppliers); for "sme" and "enterprise" talk about the business.
+- For a request like "prepare a plan for next month", combine tools (e.g. balance with day 30, upcoming_expense,
+  budget, why_risk) and present it as a plan built from those results.
 - action "tools": choose 1 to 3 tools from TOOLS and fill only the inputs they need (others null).
   Follow-ups like "what if it drops another 10%" must combine with the previous turn (e.g. 20% + 10% -> percent 30).
 - action "reply": for greetings/small talk/clarifying questions/out-of-scope, write the full reply in "reply"
@@ -215,7 +225,7 @@ def _alerts_tool(snap: Snapshot, today: date, lang: str, features: frozenset[str
 
 
 def run_tool(call: ToolCall, snap: Snapshot, today: date, message: str, lang: str, features: frozenset[str],
-             masker: Masker) -> dict:
+             masker: Masker, extra_tools: dict | None = None) -> dict:
     """Execute one tool with the deterministic engine. Returns {answer, evidence, links} (unmasked)."""
     needed = FEATURE_FOR_TOOL.get(call.tool)
     if needed and needed not in features:
@@ -226,6 +236,9 @@ def run_tool(call: ToolCall, snap: Snapshot, today: date, message: str, lang: st
         return _inventory_tool(snap, today, rule_lang)
     if call.tool == "alerts":
         return _alerts_tool(snap, today, rule_lang, features)
+    if call.tool in EXTRA_TOOLS:
+        fn = (extra_tools or {}).get(call.tool)
+        return fn() if fn else {"answer": "That information is not available here.", "evidence": [], "links": []}
     params = {k: v for k, v in {"percent": call.percent, "delay_days": call.delay_days, "day": call.day,
                                 "amount_paisa": _rupees_to_paisa(call.amount_rupees)}.items() if v is not None}
     question = masker.unmask(message)
@@ -254,18 +267,18 @@ def _tools_doc(features: frozenset[str]) -> str:
 
 
 def answer(snap: Snapshot, today: date, message: str, history: list[Turn], features: frozenset[str],
-           names: list[str], business_kind: str) -> dict | None:
+           names: list[str], business_kind: str, extra_tools: dict | None = None) -> dict | None:
     """Returns a Copilot result (same shape as copilot.answer) or None when no provider gives a usable plan.
     Raises nothing: any failure means "keep the rule-based answer" (logged by type only)."""
     try:
-        return _answer(snap, today, message, history, features, names, business_kind)
+        return _answer(snap, today, message, history, features, names, business_kind, extra_tools)
     except Exception as exc:  # the agent is optional; it must never break the Copilot
         log.error("copilot agent failed: %s", type(exc).__name__)
         return None
 
 
 def _answer(snap: Snapshot, today: date, message: str, history: list[Turn], features: frozenset[str],
-            names: list[str], business_kind: str) -> dict | None:
+            names: list[str], business_kind: str, extra_tools: dict | None = None) -> dict | None:
     masker = Masker(names)
     msg = masker.mask(message.strip())[:1000]
     hint = _language_hint(message)
@@ -292,7 +305,7 @@ def _answer(snap: Snapshot, today: date, message: str, history: list[Turn], feat
     results = []
     for call in plan.tools[:MAX_TOOLS_PER_TURN]:
         try:
-            results.append((call, run_tool(call, snap, today, msg, lang, features, masker)))
+            results.append((call, run_tool(call, snap, today, msg, lang, features, masker, extra_tools)))
         except Exception as exc:  # engine errors never reach the model or the user verbatim
             log.error("agent tool %s failed: %s", call.tool, type(exc).__name__)
             return None

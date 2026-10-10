@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from ..auth import current_actor
 from ..models import AuditEvent, Business
 
 TRACKED = {
@@ -41,5 +42,5 @@ def record(db: Session, business: Business, entity_type: str, entity_id: str, ac
     if extra:
         changes.update(extra)
     db.add(AuditEvent(business_id=business.id, entity_type=entity_type, entity_id=entity_id, action=action,
-                      actor_id=business.owner_id, changes=changes))
+                      actor_id=current_actor.get() or business.owner_id, changes=changes))
 

@@ -38,6 +38,9 @@ class Settings:
     anon_max_transactions: int
     demo_ttl_days: int
     cron_secret: str | None
+    resend_api_key: str | None
+    email_from: str
+    app_url: str
     today_override: str | None
     max_upload_bytes: int
     environment: str
@@ -67,6 +70,10 @@ def get_settings() -> Settings:
         anon_max_transactions=int(os.getenv("ANON_MAX_TRANSACTIONS", "3000")),
         demo_ttl_days=int(os.getenv("DEMO_TTL_DAYS", "7")),
         cron_secret=os.getenv("CRON_SECRET") or None,
+        # Team invitation emails (Resend). Without a key, invitations work but no email is sent (reported as such).
+        resend_api_key=os.getenv("RESEND_API_KEY") or None,
+        email_from=os.getenv("EMAIL_FROM", "FinDost AI <no-reply@tehsaad.site>"),
+        app_url=(os.getenv("APP_URL") or "https://findostai.vercel.app").rstrip("/"),
         today_override=os.getenv("FINDOST_TODAY") or None,
         max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024))),
         environment=os.getenv("ENVIRONMENT", "development"),

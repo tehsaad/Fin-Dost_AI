@@ -41,6 +41,28 @@ def _shortage_effect(summary: dict, cmp: dict) -> str:
     return f"; a shortage still starts on {cmp['scenario_shortage_date']}, but it is smaller"
 
 
+# Same calculations, personal-finance wording for household and student workspaces.
+PERSONAL_WORDING = {
+    "defer_suppliers": ("Ask to move a bill payment by 14 days",
+                        "Ask the landlord, school, utility or lender to split or move the payment by 14 days."),
+    "delay_purchases": ("Postpone non-essential shopping for 2 weeks",
+                        "Buy only essentials for the next 14 days and move bigger purchases later."),
+    "cut_discretionary": ("Cut optional spending by 30%", None),
+}
+
+
+def _personalize(cands: list[dict]) -> None:
+    for c in cands:
+        title, action = PERSONAL_WORDING.get(c["id"], (None, None))
+        if title:
+            c["title"] = title
+        if action:
+            c["action"] = action
+        for key in ("problem", "action", "tradeoffs"):
+            if isinstance(c.get(key), str):
+                c[key] = c[key].replace("supplier bills", "bills").replace("suppliers", "payees").replace("stock purchases", "purchases")
+
+
 def generate_candidates(snap: Snapshot, today: date, scenario_result: dict, horizon: int) -> list[dict]:
     summary = scenario_result["summary"]
     focus_day = summary["days_to_shortage"] or (date.fromisoformat(summary["min_balance_date"]) - today).days or horizon
@@ -168,6 +190,8 @@ def generate_candidates(snap: Snapshot, today: date, scenario_result: dict, hori
             "evidence_quality": "medium",
             "evidence": [f"{p['name']}: {p['quantity']} {p['unit']} on hand, ~{p['days_of_cover']} days of cover" for p in slow[:5]],
         })
+    if snap.kind in ("household", "student"):
+        _personalize(cands)
     return cands
 
 
