@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..auth import get_business, require_feature
@@ -49,14 +50,26 @@ def _alerts_with_state(db: Session, business: Business, alerts: list[dict], toda
     out = []
     for a in alerts:
         key = (a["rule"], a["entity_key"][:80])
+        if key in seen:  # one stored alert per rule and record; the list is ordered most severe first
+            continue
         seen.add(key)
         row = existing.get(key)
         if row is None:
             row = RiskAlert(business_id=business.id, rule=key[0], entity_key=key[1], first_detected_on=today,
                             last_detected_on=today, status="open", level=a["level"], score=a["score"],
                             title=a["title"][:200], payload={})
-            db.add(row)
-            db.flush()
+            try:
+                with db.begin_nested():
+                    db.add(row)
+                    db.flush()
+            except IntegrityError:
+                # Another request for this workspace (e.g. the dashboard and the alerts page loading together)
+                # stored the same new alert a moment ago: use that row instead of failing the page.
+                row = db.scalar(select(RiskAlert).where(RiskAlert.business_id == business.id,
+                                                        RiskAlert.rule == key[0], RiskAlert.entity_key == key[1]))
+                if row is None:
+                    raise
+            existing[key] = row
         elif row.status == "resolved":
             row.status = "open"
         row.level, row.score, row.title, row.last_detected_on = a["level"], a["score"], a["title"][:200], today
