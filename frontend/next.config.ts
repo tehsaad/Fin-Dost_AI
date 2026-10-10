@@ -2,7 +2,12 @@ import type { NextConfig } from "next";
 
 // The browser always calls /api/v1/* on this origin; Next.js proxies it to the
 // FastAPI backend, so there is no CORS and the backend URL stays configurable.
-const API_URL = (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+const configuredApiUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL;
+// A Vercel build without API_URL would silently proxy every API call to localhost; fail the build instead.
+if (process.env.VERCEL && !configuredApiUrl) {
+  throw new Error("API_URL must be set for Vercel builds (the FastAPI backend base URL).");
+}
+const API_URL = (configuredApiUrl || "http://localhost:8000").replace(/\/+$/, "");
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },

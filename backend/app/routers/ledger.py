@@ -15,7 +15,7 @@ from ..auth import get_business, require_feature
 from ..config import today as get_today
 from ..db import get_db
 from ..errors import ApiError, not_found
-from ..models import Business, Customer, Payable, Receivable, Supplier, Transaction
+from ..models import AuditEvent, Business, Customer, Payable, Receivable, Supplier, Transaction
 from ..money import fmt_pkr
 from ..schemas import (
     CustomerIn,
@@ -28,11 +28,12 @@ from ..schemas import (
     TransactionIn,
     TransactionUpdate,
 )
+from ..services import audit
 from ..services.categories import EXPENSE_CATEGORIES, INCOME_CATEGORIES, categorize
 from ..services.i18n import isolate_ltr
 from ..services.ingestion import dedupe_key
 from ..services.ledger import account_balances, payable_view, receivable_view
-from .common import context, get_or_create_customer, get_or_create_supplier, owned
+from .common import context, csv_safe, get_or_create_customer, get_or_create_supplier, owned
 
 router = APIRouter(tags=["ledger"])
 
@@ -118,17 +119,12 @@ def export_transactions(
                 "supplier", "source"])
     for t in rows:
         w.writerow([t.occurred_on.isoformat(), t.kind, f"{t.amount_paisa / 100:.2f}", t.account or "", t.to_account or "",
-                    _safe(t.category), _safe(t.description), _safe(customers.get(t.customer_id, "")),
-                    _safe(suppliers.get(t.supplier_id, "")), t.source])
+                    csv_safe(t.category), csv_safe(t.description), csv_safe(customers.get(t.customer_id, "")),
+                    csv_safe(suppliers.get(t.supplier_id, "")), t.source])
     buf.seek(0)
     filename = f"findost-ledger-{get_today().isoformat()}.csv"
     return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
-
-
-def _safe(text: str) -> str:
-    """Neutralise spreadsheet formula injection in exported cells."""
-    return "'" + text if text and text[0] in "=+-@\t\r" else text
 
 
 @router.get("/transactions/categories")
@@ -207,18 +203,20 @@ def create_transaction(body: TransactionIn, business: Business = Depends(require
     elif kind == "customer_payment":
         if not body.receivable_id:
             raise ApiError(422, "validation_error", "A customer payment must reference a receivable (receivable_id)")
-        rec = owned(db, Receivable, body.receivable_id, business, "Receivable")
+        rec = owned(db, Receivable, body.receivable_id, business, "Receivable", lock=True)
         _check_outstanding(db, rec.amount_paisa, Transaction.receivable_id == rec.id, "customer_payment", body.amount_paisa)
         tx.receivable_id, tx.customer_id = rec.id, rec.customer_id
     elif kind == "supplier_payment":
         if not body.payable_id:
             raise ApiError(422, "validation_error", "A supplier payment must reference a payable (payable_id)")
-        pay = owned(db, Payable, body.payable_id, business, "Payable")
+        pay = owned(db, Payable, body.payable_id, business, "Payable", lock=True)
         _check_outstanding(db, pay.amount_paisa, Transaction.payable_id == pay.id, "supplier_payment", body.amount_paisa)
         tx.payable_id, tx.supplier_id = pay.id, pay.supplier_id
 
     tx.dedupe_key = dedupe_key(tx.occurred_on, tx.amount_paisa, kind, tx.description)
     db.add(tx)
+    db.flush()
+    audit.record(db, business, "transaction", tx.id, "create", after=audit.snapshot("transaction", tx))
     db.commit()
     customers, suppliers = _names(db, business)
     return {**tx_dict(tx, customers, suppliers), **extra}
@@ -242,9 +240,28 @@ def _check_outstanding(db: Session, amount: int, link_clause, kind: str, new_pay
 def update_transaction(tx_id: str, body: TransactionUpdate, business: Business = Depends(require_feature("ledger")),
                        db: Session = Depends(get_db)):
     tx = owned(db, Transaction, tx_id, business, "Transaction")
+    before = audit.snapshot("transaction", tx)
     data = body.model_dump(exclude_unset=True)
+    linked: Receivable | Payable | None = None
+    if tx.kind == "credit_sale" and tx.receivable_id:
+        linked = owned(db, Receivable, tx.receivable_id, business, "Receivable", lock=True)
+    elif tx.kind == "credit_purchase" and tx.payable_id:
+        linked = owned(db, Payable, tx.payable_id, business, "Payable", lock=True)
+    elif tx.kind == "customer_payment" and tx.receivable_id:
+        owned(db, Receivable, tx.receivable_id, business, "Receivable", lock=True)
+    elif tx.kind == "supplier_payment" and tx.payable_id:
+        owned(db, Payable, tx.payable_id, business, "Payable", lock=True)
+    linked_type = "receivable" if isinstance(linked, Receivable) else "payable"
+    linked_before = audit.snapshot(linked_type, linked) if linked is not None else None
     if "occurred_on" in data:
         _check_date(data["occurred_on"])
+        if linked is not None:
+            # The invoice/bill is dated by its sale/purchase: keep them in step.
+            if linked.due_on < data["occurred_on"]:
+                raise ApiError(422, "validation_error",
+                               f"The due date ({linked.due_on.isoformat()}) would be before the new date. "
+                               "Change the due date first.")
+            linked.issued_on = data["occurred_on"]
     if "amount_paisa" in data:
         new_amount = data["amount_paisa"]
         if tx.kind == "credit_sale" and tx.receivable_id:
@@ -278,6 +295,10 @@ def update_transaction(tx_id: str, body: TransactionUpdate, business: Business =
     if tx.source == "demo":
         tx.source = "edited"
     tx.dedupe_key = dedupe_key(tx.occurred_on, tx.amount_paisa, tx.kind, tx.description)
+    audit.record(db, business, "transaction", tx.id, "update", before=before, after=audit.snapshot("transaction", tx))
+    if linked is not None:
+        audit.record(db, business, linked_type, linked.id, "update", before=linked_before,
+                     after=audit.snapshot(linked_type, linked), extra={"via_transaction": tx.id})
     db.commit()
     customers, suppliers = _names(db, business)
     return tx_dict(tx, customers, suppliers)
@@ -286,14 +307,21 @@ def update_transaction(tx_id: str, body: TransactionUpdate, business: Business =
 @router.delete("/transactions/{tx_id}", status_code=204)
 def delete_transaction(tx_id: str, business: Business = Depends(require_feature("ledger")), db: Session = Depends(get_db)):
     tx = owned(db, Transaction, tx_id, business, "Transaction")
+    audit.record(db, business, "transaction", tx.id, "delete", before=audit.snapshot("transaction", tx))
     if tx.kind == "credit_sale" and tx.receivable_id:
         if _paid(db, Transaction.receivable_id == tx.receivable_id, "customer_payment"):
             raise ApiError(409, "has_payments", "This credit sale has payments recorded. Delete the payments first.")
-        db.delete(db.get(Receivable, tx.receivable_id))  # cascades to this transaction
+        rec = db.get(Receivable, tx.receivable_id)
+        audit.record(db, business, "receivable", rec.id, "delete", before=audit.snapshot("receivable", rec),
+                     extra={"via_transaction": tx.id})
+        db.delete(rec)  # cascades to this transaction
     elif tx.kind == "credit_purchase" and tx.payable_id:
         if _paid(db, Transaction.payable_id == tx.payable_id, "supplier_payment"):
             raise ApiError(409, "has_payments", "This purchase has payments recorded. Delete the payments first.")
-        db.delete(db.get(Payable, tx.payable_id))
+        pay = db.get(Payable, tx.payable_id)
+        audit.record(db, business, "payable", pay.id, "delete", before=audit.snapshot("payable", pay),
+                     extra={"via_transaction": tx.id})
+        db.delete(pay)
     else:
         db.delete(tx)
     db.commit()
@@ -367,11 +395,15 @@ def create_receivable(body: ReceivableIn, business: Business = Depends(require_f
                      amount_paisa=body.amount_paisa)
     db.add(rec)
     db.flush()
+    audit.record(db, business, "receivable", rec.id, "create", after=audit.snapshot("receivable", rec))
     if body.record_sale:
-        db.add(Transaction(business_id=business.id, occurred_on=body.issued_on, kind="credit_sale",
+        sale = Transaction(business_id=business.id, occurred_on=body.issued_on, kind="credit_sale",
                            amount_paisa=body.amount_paisa, category="Sales",
                            description=body.description or f"Credit sale - {cust.name}", customer_id=cust.id,
-                           receivable_id=rec.id, source="manual"))
+                           receivable_id=rec.id, source="manual")
+        db.add(sale)
+        db.flush()
+        audit.record(db, business, "transaction", sale.id, "create", after=audit.snapshot("transaction", sale))
     db.commit()
     snap, today = context(db, business)
     return next(receivable_view(r, today) for r in snap.receivables if r.id == rec.id)
@@ -381,11 +413,13 @@ def create_receivable(body: ReceivableIn, business: Business = Depends(require_f
 def update_receivable(rec_id: str, body: ReceivableUpdate, business: Business = Depends(require_feature("receivables")),
                       db: Session = Depends(get_db)):
     rec = owned(db, Receivable, rec_id, business, "Receivable")
+    before = audit.snapshot("receivable", rec)
     data = body.model_dump(exclude_unset=True)
     if "due_on" in data and data["due_on"] < rec.issued_on:
         raise ApiError(422, "validation_error", "Due date cannot be before the issue date")
     for k, v in data.items():
         setattr(rec, k, v)
+    audit.record(db, business, "receivable", rec.id, "update", before=before, after=audit.snapshot("receivable", rec))
     db.commit()
     snap, today = context(db, business)
     return next(receivable_view(r, today) for r in snap.receivables if r.id == rec.id)
@@ -394,7 +428,7 @@ def update_receivable(rec_id: str, body: ReceivableUpdate, business: Business = 
 @router.post("/receivables/{rec_id}/payments", status_code=201)
 def record_receivable_payment(rec_id: str, body: PaymentIn, business: Business = Depends(require_feature("receivables")),
                               db: Session = Depends(get_db)):
-    rec = owned(db, Receivable, rec_id, business, "Receivable")
+    rec = owned(db, Receivable, rec_id, business, "Receivable", lock=True)
     when = body.occurred_on or get_today()
     _check_date(when)
     _check_outstanding(db, rec.amount_paisa, Transaction.receivable_id == rec.id, "customer_payment", body.amount_paisa)
@@ -405,6 +439,9 @@ def record_receivable_payment(rec_id: str, body: PaymentIn, business: Business =
                      customer_id=rec.customer_id, receivable_id=rec.id, source="manual")
     tx.dedupe_key = dedupe_key(when, body.amount_paisa, "customer_payment", desc)
     db.add(tx)
+    db.flush()
+    audit.record(db, business, "transaction", tx.id, "payment", after=audit.snapshot("transaction", tx),
+                 extra={"receivable_id": rec.id})
     db.commit()
     snap, today = context(db, business)
     return {"receivable": next(receivable_view(r, today) for r in snap.receivables if r.id == rec.id),
@@ -457,12 +494,16 @@ def create_payable(body: PayableIn, business: Business = Depends(require_feature
                   amount_paisa=body.amount_paisa, is_essential=body.is_essential)
     db.add(pay)
     db.flush()
+    audit.record(db, business, "payable", pay.id, "create", after=audit.snapshot("payable", pay))
     if body.record_purchase:
         _check_date(body.issued_on)
-        db.add(Transaction(business_id=business.id, occurred_on=body.issued_on, kind="credit_purchase",
-                           amount_paisa=body.amount_paisa, category=body.category,
-                           description=body.description or f"Purchase on credit - {sup.name if sup else body.category}",
-                           supplier_id=sup.id if sup else None, payable_id=pay.id, source="manual"))
+        purchase = Transaction(business_id=business.id, occurred_on=body.issued_on, kind="credit_purchase",
+                               amount_paisa=body.amount_paisa, category=body.category,
+                               description=body.description or f"Purchase on credit - {sup.name if sup else body.category}",
+                               supplier_id=sup.id if sup else None, payable_id=pay.id, source="manual")
+        db.add(purchase)
+        db.flush()
+        audit.record(db, business, "transaction", purchase.id, "create", after=audit.snapshot("transaction", purchase))
     db.commit()
     snap, today = context(db, business)
     return next(payable_view(p, today) for p in snap.payables if p.id == pay.id)
@@ -472,11 +513,13 @@ def create_payable(body: PayableIn, business: Business = Depends(require_feature
 def update_payable(pay_id: str, body: PayableUpdate, business: Business = Depends(require_feature("payables")),
                    db: Session = Depends(get_db)):
     pay = owned(db, Payable, pay_id, business, "Payable")
+    before = audit.snapshot("payable", pay)
     data = body.model_dump(exclude_unset=True)
     if "due_on" in data and data["due_on"] < pay.issued_on:
         raise ApiError(422, "validation_error", "Due date cannot be before the issue date")
     for k, v in data.items():
         setattr(pay, k, v)
+    audit.record(db, business, "payable", pay.id, "update", before=before, after=audit.snapshot("payable", pay))
     db.commit()
     snap, today = context(db, business)
     return next(payable_view(p, today) for p in snap.payables if p.id == pay.id)
@@ -487,6 +530,7 @@ def delete_payable(pay_id: str, business: Business = Depends(require_feature("pa
     pay = owned(db, Payable, pay_id, business, "Payable")
     if _paid(db, Transaction.payable_id == pay.id, "supplier_payment"):
         raise ApiError(409, "has_payments", "This bill has payments recorded. Delete the payments first.")
+    audit.record(db, business, "payable", pay.id, "delete", before=audit.snapshot("payable", pay))
     db.delete(pay)
     db.commit()
 
@@ -494,7 +538,7 @@ def delete_payable(pay_id: str, business: Business = Depends(require_feature("pa
 @router.post("/payables/{pay_id}/payments", status_code=201)
 def record_payable_payment(pay_id: str, body: PaymentIn, business: Business = Depends(require_feature("payables")),
                            db: Session = Depends(get_db)):
-    pay = owned(db, Payable, pay_id, business, "Payable")
+    pay = owned(db, Payable, pay_id, business, "Payable", lock=True)
     when = body.occurred_on or get_today()
     _check_date(when)
     _check_outstanding(db, pay.amount_paisa, Transaction.payable_id == pay.id, "supplier_payment", body.amount_paisa)
@@ -505,7 +549,26 @@ def record_payable_payment(pay_id: str, body: PaymentIn, business: Business = De
                      payable_id=pay.id, source="manual")
     tx.dedupe_key = dedupe_key(when, body.amount_paisa, "supplier_payment", desc)
     db.add(tx)
+    db.flush()
+    audit.record(db, business, "transaction", tx.id, "payment", after=audit.snapshot("transaction", tx),
+                 extra={"payable_id": pay.id})
     db.commit()
     snap, today = context(db, business)
     return {"payable": next(payable_view(p, today) for p in snap.payables if p.id == pay.id),
             "transaction_id": tx.id, "balance": account_balances(snap, today)}
+
+
+# ------------------------------------------------------------------ change history
+
+@router.get("/audit")
+def audit_history(entity_id: str | None = None, entity_type: str | None = None,
+                  limit: int = Query(default=50, ge=1, le=200),
+                  business: Business = Depends(require_feature("ledger")), db: Session = Depends(get_db)):
+    stmt = select(AuditEvent).where(AuditEvent.business_id == business.id)
+    if entity_id:
+        stmt = stmt.where(AuditEvent.entity_id == entity_id)
+    if entity_type:
+        stmt = stmt.where(AuditEvent.entity_type == entity_type)
+    rows = db.scalars(stmt.order_by(AuditEvent.created_at.desc()).limit(limit)).all()
+    return {"items": [{"id": e.id, "entity_type": e.entity_type, "entity_id": e.entity_id, "action": e.action,
+                       "changes": e.changes, "at": e.created_at.isoformat()} for e in rows]}

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -24,11 +24,12 @@ from ..services.i18n import isolate_ltr
 from ..services.impact import SDG_TARGETS, run_benchmark
 from ..services.insights import dashboard as build_dashboard
 from ..services.insights import data_quality, report_insights
+from ..services.ledger import account_balances, period_summary
 from ..services.inventory import inventory_analytics
 from ..services.recovery import recommend
 from ..services.risk import compute_alerts
 from ..services.simulation import simulate
-from .common import context, features, forecast_and_store
+from .common import context, csv_safe, features, forecast_and_store
 
 router = APIRouter(tags=["analytics"])
 
@@ -152,6 +153,16 @@ def financial_report(business: Business = Depends(require_feature("reports")), d
     dash = build_dashboard(snap, today, fc, alert_list, today - timedelta(days=29), today, features(business), rec)
     s = fc["summary"]
     k = dash["kpis"]
+    # Reporting period: the last 30 days, never earlier than the workspace's opening date.
+    start = max(today - timedelta(days=29), snap.opening_date)
+    p = period_summary(snap, start, today)
+    period = {
+        "from": start.isoformat(), "to": today.isoformat(), "days": (today - start).days + 1,
+        "opening_cash_paisa": account_balances(snap, start - timedelta(days=1))["total"],
+        "closing_cash_paisa": account_balances(snap, today)["total"],
+        "cash_in_paisa": p.cash_in, "cash_out_paisa": p.cash_out,
+        "revenue_paisa": p.revenue, "expenses_paisa": p.expenses, "profit_paisa": p.profit,
+    }
     summary = [
         f"{business.name} holds {fmt_pkr(k['cash_balance']['value_paisa'])} today across cash, bank and wallet.",
         f"Over the last 30 days revenue was {fmt_pkr(k['revenue']['value_paisa'])} and expenses "
@@ -169,7 +180,10 @@ def financial_report(business: Business = Depends(require_feature("reports")), d
         "FinDost is decision support and does not replace a qualified accountant or financial adviser.",
     ]
     return {
-        "generated_at": today.isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "as_of": today.isoformat(),
+        "period": period,
+        "forecast_horizon_days": fc["horizon_days"],
         "business": {"name": business.name, "kind": business.kind, "city": business.city, "is_demo": business.is_demo},
         "executive_summary": summary,
         "kpis": k,
@@ -194,7 +208,18 @@ def financial_report_csv(business: Business = Depends(require_feature("reports")
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["section", "metric", "value_pkr_or_text", "type"])
+    per = rep["period"]
     rows = [
+        ("report", "Generated at (UTC)", rep["generated_at"], "meta"),
+        ("report", "Reporting period", f"{per['from']} to {per['to']}", "meta"),
+        ("report", "Forecast horizon (days)", rep["forecast_horizon_days"], "meta"),
+        ("period", "Opening cash", per["opening_cash_paisa"] / 100, "actual"),
+        ("period", "Cash in", per["cash_in_paisa"] / 100, "actual"),
+        ("period", "Cash out", per["cash_out_paisa"] / 100, "actual"),
+        ("period", "Closing cash", per["closing_cash_paisa"] / 100, "actual"),
+        ("period", "Revenue", per["revenue_paisa"] / 100, "actual"),
+        ("period", "Expenses", per["expenses_paisa"] / 100, "actual"),
+        ("period", "Estimated profit", per["profit_paisa"] / 100, "estimated"),
         ("kpi", "Cash balance", k["cash_balance"]["value_paisa"] / 100, "actual"),
         ("kpi", "Revenue (30d)", k["revenue"]["value_paisa"] / 100, "actual"),
         ("kpi", "Expenses (30d)", k["expenses"]["value_paisa"] / 100, "actual"),
@@ -208,13 +233,19 @@ def financial_report_csv(business: Business = Depends(require_feature("reports")
         ("forecast", "Minimum balance", rep["forecast"]["summary"]["min_balance_paisa"] / 100, "forecast"),
     ]
     for r in rows:
-        w.writerow(r)
+        w.writerow([csv_safe(v) for v in r])
     for p in rep["forecast"]["points"]:
         w.writerow(("forecast_point", p["date"], p["balance_paisa"] / 100, "forecast"))
     for a in rep["risk_indicators"]:
-        w.writerow(("alert", a["title"], a["level"], f"severity {a['score']}"))
+        w.writerow([csv_safe(v) for v in ("alert", a["title"], a["level"], f"severity {a['score']}")])
     for r in rep["recommendations"]:
-        w.writerow(("recommendation", r["title"], r["reasoning"], f"score {r['score']}"))
+        w.writerow([csv_safe(v) for v in ("recommendation", r["title"], r["reasoning"], f"score {r['score']}")])
+    for sc in rep["scenario_comparison"]:
+        c = sc["comparison"]
+        w.writerow([csv_safe(v) for v in ("scenario", sc["name"], c["min_balance_change_paisa"] / 100,
+                    f"shortage {c['scenario_shortage_date'] or 'none'} (baseline {c['baseline_shortage_date'] or 'none'})")])
+    for note in rep["limitations"]:
+        w.writerow([csv_safe(v) for v in ("limitation", note, "", "text")])
     buf.seek(0)
     return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="findost-report-{get_today()}.csv"'})

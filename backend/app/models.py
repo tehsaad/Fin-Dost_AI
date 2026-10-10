@@ -341,3 +341,35 @@ class ImportBatch(Base):
     rows: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
     summary: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditEvent(Base):
+    """Append-only change history for ledger records (who changed what, before -> after)."""
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    business_id: Mapped[str] = mapped_column(
+        ForeignKey("businesses.id", ondelete="CASCADE"), index=True
+    )
+    entity_type: Mapped[str] = mapped_column(String(24))  # transaction|receivable|payable|import_batch
+    entity_id: Mapped[str] = mapped_column(String(36), index=True)
+    action: Mapped[str] = mapped_column(String(16))  # create|update|delete|payment|import
+    actor_id: Mapped[str] = mapped_column(String(64))
+    changes: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class AiUsage(Base):
+    """Per-business daily AI call counter (durable across serverless instances)."""
+
+    __tablename__ = "ai_usage"
+    __table_args__ = (UniqueConstraint("business_id", "day", "task", name="uq_ai_usage_day_task"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    business_id: Mapped[str] = mapped_column(
+        ForeignKey("businesses.id", ondelete="CASCADE"), index=True
+    )
+    day: Mapped[date] = mapped_column(Date)
+    task: Mapped[str] = mapped_column(String(24))
+    calls: Mapped[int] = mapped_column(Integer, default=0)

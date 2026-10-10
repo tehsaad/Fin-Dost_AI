@@ -14,6 +14,7 @@ from ..db import get_db
 from ..errors import ApiError
 from ..models import Business
 from ..schemas import BusinessUpdate, OnboardingIn
+from ..services import audit
 from ..services.i18n import GLOSSARY
 from ..services.recovery import DEFAULT_WEIGHTS
 from ..services.seed import DEMO_PROFILES, clear_business_data, rebase_demo_dates, seed_demo
@@ -94,6 +95,8 @@ def update_business(body: BusinessUpdate, business: Business = Depends(get_busin
 @router.post("/business/reset-demo")
 def reset_demo(business: Business = Depends(get_business), db: Session = Depends(get_db)):
     seed_demo(db, business, get_today())
+    audit.record(db, business, "workspace", business.id, "reset", extra={"note": "demo data restored"})
+    db.commit()
     return {"ok": True, "business": business_dict(business)}
 
 
@@ -105,6 +108,7 @@ def clear_data(business: Business = Depends(get_business), db: Session = Depends
     business.demo_anchor = None
     business.opening_cash_paisa = business.opening_bank_paisa = business.opening_wallet_paisa = 0
     business.opening_date = get_today() - timedelta(days=1)
+    audit.record(db, business, "workspace", business.id, "clear", extra={"note": "all records removed by the owner"})
     db.commit()
     return {"ok": True, "business": business_dict(business)}
 

@@ -76,8 +76,19 @@ def get_or_create_supplier(db: Session, business: Business, supplier_id: str | N
     return s
 
 
-def owned(db: Session, model, obj_id: str, business: Business, what: str):
-    obj = db.get(model, obj_id)
+def owned(db: Session, model, obj_id: str, business: Business, what: str, lock: bool = False):
+    """Load a record of this business or 404. ``lock`` takes a row lock (Postgres) so concurrent
+    payments against the same invoice are serialised."""
+    # "of" keeps FOR UPDATE off the eagerly outer-joined customer/supplier tables (Postgres rejects that).
+    obj = (db.get(model, obj_id, with_for_update={"of": model}, populate_existing=True) if lock
+           else db.get(model, obj_id))
     if obj is None or getattr(obj, "business_id", None) != business.id:
         raise not_found(what)
     return obj
+
+
+def csv_safe(value):
+    """Neutralise spreadsheet formula injection in exported text cells."""
+    if isinstance(value, str) and value and value[0] in "=+-@\t\r":
+        return "'" + value
+    return value
